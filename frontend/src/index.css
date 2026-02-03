@@ -1,0 +1,65 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Base */
+:root {
+  color-scheme: light;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-zinc-50 text-zinc-900;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+}
+
+/* Scrollbar (webkits) */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgb(212 212 216);
+  border-radius: 999px;
+  border: 2px solid rgb(244 244 245);
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgb(161 161 170);
+}
+*::-webkit-scrollbar-track {
+  background: rgb(244 244 245);
+}
+
+/* Component helpers */
+.card {
+  @apply bg-white border border-zinc-200 rounded-2xl shadow-sm transition-all;
+}
+
+.card:hover {
+  @apply shadow-md -translate-y-0.5;
+}
+
+.btn {
+  @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-medium
+    border border-zinc-200 bg-white hover:bg-zinc-50 active:bg-zinc-100
+    transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply transition-transform hover:-translate-y-0.5 active:translate-y-0;
+}
+
+.btn-primary {
+  @apply border-zinc-900 bg-zinc-900 text-white hover:bg-zinc-800 active:bg-zinc-950;
+}
+
+.input {
+  @apply w-full rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm
+    outline-none focus:ring-2 focus:ring-zinc-900/10 focus:border-zinc-300;
+}
+
+.badge {
+  @apply inline-flex items-center rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs text-zinc-700;
+}

@@ -1,0 +1,180 @@
+const API_BASE = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+
+export function getToken() {
+  return localStorage.getItem("token") || "";
+}
+
+export function setToken(token: string) {
+  localStorage.setItem("token", token);
+}
+
+export function clearToken() {
+  localStorage.removeItem("token");
+}
+
+async function http<T>(path: string, opts: RequestInit = {}): Promise<T> {
+  const token = getToken();
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    ...opts,
+    headers: {
+      ...(opts.headers || {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  });
+
+  const text = await res.text();
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    // ignore
+  }
+
+  if (!res.ok) {
+    const msg = json?.error || json?.message || text || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+
+  return json as T;
+}
+
+// ---------- Auth ----------
+export async function login(username: string, password: string) {
+  const r = await http<{ token: string }>(`/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+  });
+
+  // ✅ já salva token aqui pra evitar esquecer no front
+  setToken(r.token);
+  return r;
+}
+
+export async function setupAdmin() {
+  return http<{ ok: boolean }>(`/setup`, { method: "POST" });
+}
+
+// ---------- Grid types ----------
+export type GridColumn = {
+  id: string; // BigInt vem como string no backend
+  key: string;
+  label: string;
+  type: string;
+  width?: number | null;
+  order: number;
+  hidden: boolean;
+};
+
+export type GridRow = {
+  id: string;
+  sheet?: string;
+  rowNumber?: number;
+  data: Record<string, any>;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export async function fetchGrid(
+  params: { sheet?: string; page?: number; pageSize?: number; sortKey?: string; sortDir?: "asc" | "desc" } = {}
+) {
+  const qs = new URLSearchParams();
+  if (params.sheet) qs.set("sheet", params.sheet);
+  if (params.page) qs.set("page", String(params.page));
+  if (params.pageSize) qs.set("pageSize", String(params.pageSize));
+  if (params.sortKey) qs.set("sortKey", params.sortKey);
+  if (params.sortDir) qs.set("sortDir", params.sortDir);
+
+  const q = qs.toString();
+  return http<{ columns: GridColumn[]; rows: GridRow[]; total: number; page: number; pageSize: number; sheet: string }>(
+    `/grid${q ? `?${q}` : ""}`
+  );
+}
+
+export async function updateCell(rowId: string, key: string, value: any) {
+  return http<GridRow>(`/grid/rows/${rowId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  });
+}
+
+export async function createRow(sheet: string, data: Record<string, any> = {}) {
+  return http<GridRow>(`/grid/rows`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sheet, data }),
+  });
+}
+
+export async function deleteRow(rowId: string) {
+  return http<{ ok: boolean }>(`/grid/rows/${rowId}`, { method: "DELETE" });
+}
+
+export async function createColumn(label: string, type = "text") {
+  return http<GridColumn>(`/grid/columns`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label, type }),
+  });
+}
+
+export async function deleteColumn(key: string) {
+  return http<{ ok: boolean }>(`/grid/columns/${encodeURIComponent(key)}`, { method: "DELETE" });
+}
+
+export async function importGrid(file: File, sheet: string, mode: "merge" | "replace" = "merge") {
+  const fd = new FormData();
+  fd.append("file", file);
+  fd.append("sheet", sheet);
+  fd.append("mode", mode);
+
+  const token = getToken();
+
+  const res = await fetch(`${API_BASE}/import/grid`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    body: fd,
+  });
+
+  const text = await res.text();
+  let json: any = null;
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {}
+
+  if (!res.ok) {
+    const msg = json?.error || json?.message || text || `HTTP ${res.status}`;
+    throw new Error(msg);
+  }
+  return json as { ok: boolean; sheet: string; mode: string; colunas: number; linhas: number };
+}
+
+export async function gridSummary(sheet: string) {
+  const qs = new URLSearchParams();
+  qs.set("sheet", sheet);
+  return http<{ sheet: string; columns: number; rows: number }>(`/grid/summary?${qs.toString()}`);
+}
+
+// ✅ AQUI está a função que estava faltando
+export async function searchGrid(
+  q: string,
+  sheet: string,
+  page = 1,
+  pageSize = 50
+) {
+  const qs = new URLSearchParams();
+  qs.set("q", q);
+  qs.set("sheet", sheet);
+  qs.set("page", String(page));
+  qs.set("pageSize", String(pageSize));
+
+  return http<{
+    total: number;
+    page: number;
+    pageSize: number;
+    columns: GridColumn[];
+    items: GridRow[];
+  }>(`/grid/search?${qs.toString()}`);
+}

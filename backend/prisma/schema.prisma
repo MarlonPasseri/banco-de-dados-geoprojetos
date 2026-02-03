@@ -1,0 +1,88 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String   // hash
+  createdAt DateTime @default(now())
+}
+
+model Contrato {
+  numero            Int      @id
+  ordemDataEntrega  Int?
+  followUp          String?
+  grupo             String?
+  convite           DateTime?
+  ano               Int?
+  entrega           DateTime?
+  ultimoContato     DateTime?
+  nomeProjetoLocal  String?
+  cliente           String?
+  tipoServico       String?
+  resp              String?
+  status            String?
+  contatos          String?
+  valor             Decimal? @db.Decimal(18,2)
+  prazoMes          Int?
+  go                String?
+  observacoes       String?
+  certidao          String?
+  mediaMensal       Decimal? @db.Decimal(18,2)
+  total             Decimal? @db.Decimal(18,2)
+
+  parcelas          Parcela[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([status])
+  @@index([cliente])
+  @@index([ano])
+}
+
+model Parcela {
+  id             BigInt   @id @default(autoincrement())
+  contratoNumero Int
+  parcela        Int
+  valor          Decimal  @db.Decimal(18,2)
+
+  contrato       Contrato @relation(fields: [contratoNumero], references: [numero], onDelete: Cascade)
+
+  @@unique([contratoNumero, parcela])
+  @@index([contratoNumero])
+}
+
+model GridColumn {
+  id        BigInt   @id @default(autoincrement())
+  key       String   @unique
+  label     String
+  type      String   @default("text") // text|number|date|select|percent|currency
+  width     Int?     // opcional
+  order     Int      @default(0)
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GridRow {
+  id         BigInt   @id @default(autoincrement())
+  sheet      String   @default("CONTRATOS")
+  rowNumber  Int
+  data       Json
+  searchText String   @default("")  // ✅ novo
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([sheet, rowNumber])
+  @@index([sheet])
+  @@index([searchText])
+}
+
+
