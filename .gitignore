@@ -8,3 +8,4 @@ build/
 *.tsbuildinfo
 .vscode/
 .idea/
+backups/
