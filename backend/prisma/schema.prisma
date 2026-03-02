@@ -85,4 +85,53 @@ model GridRow {
   @@index([searchText])
 }
 
+model Cliente {
+  id        Int      @id @default(autoincrement())
+  nome      String   @unique
+  gps       Gp[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Gp {
+  id          Int       @id @default(autoincrement())
+  chave       String    @unique
+  grupo       String?
+  ano         Int?
+  os          Boolean   @default(false)
+  aditivo     Boolean   @default(false)
+  tipoServico String?
+  descricao   String?
+  clienteId   Int?
+
+  cliente     Cliente?  @relation(fields: [clienteId], references: [id], onDelete: SetNull)
+  followUps   FollowUp[]
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([grupo])
+  @@index([ano])
+  @@index([clienteId])
+}
+
+model FollowUp {
+  id            Int      @id @default(autoincrement())
+  gpId          Int
+  convite       DateTime?
+  entrega       DateTime?
+  ultimoContato DateTime?
+  status        String?
+  valor         Decimal? @db.Decimal(18,2)
+
+  gp            Gp       @relation(fields: [gpId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([gpId])
+  @@index([status])
+  @@index([ultimoContato])
+}
+
 

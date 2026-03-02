@@ -440,56 +440,68 @@ router.delete("/grid/columns/:key", authMiddleware, async (req, res) => {
 // import excel para GRID (cria colunas e linhas)
 // body: sheet=CONTRATOS (ou qualquer aba), mode=merge|replace
 router.post("/import/grid", authMiddleware, upload.single("file"), async (req, res) => {
-  if (!req.file) return res.status(400).json({ error: "Envie um arquivo .xlsx" });
+  try {
+    if (!req.file) return res.status(400).json({ error: "Envie um arquivo .xlsx" });
 
-  const sheet = String(req.body?.sheet || "CONTRATOS");
-  const mode = String(req.body?.mode || "merge"); // merge | replace
-  const { columns, rows } = parseSheetToGrid(req.file.buffer, sheet);
+    const sheet = String(req.body?.sheet || "CONTRATOS");
+    const mode = String(req.body?.mode || "merge"); // merge | replace
+    const { columns, rows } = parseSheetToGrid(req.file.buffer, sheet);
 
-  // limites básicos (anti travar)
-  if (rows.length > 20000) return res.status(400).json({ error: "Planilha muito grande (limite 20.000 linhas)." });
-  if (columns.length > 300) return res.status(400).json({ error: "Muitas colunas (limite 300)." });
+    // limites basicos (anti travar)
+    if (rows.length > 20000) {
+      return res.status(400).json({ error: "Planilha muito grande (limite 20.000 linhas)." });
+    }
+    if (columns.length > 300) {
+      return res.status(400).json({ error: "Muitas colunas (limite 300)." });
+    }
 
-  // cria colunas que faltam
-  const existing = await prisma.gridColumn.findMany();
-  const existingKeys = new Set(existing.map((c) => c.key));
+    // cria colunas que faltam
+    const existing = await prisma.gridColumn.findMany();
+    const existingKeys = new Set(existing.map((c) => c.key));
 
-  const maxOrder = await prisma.gridColumn.aggregate({ _max: { order: true } });
-  let order = (maxOrder._max.order ?? 0) + 1;
+    const maxOrder = await prisma.gridColumn.aggregate({ _max: { order: true } });
+    let order = (maxOrder._max.order ?? 0) + 1;
 
-  const toCreate = columns
-    .filter((c) => !existingKeys.has(c.key))
-    .map((c) => ({ key: c.key, label: c.label, type: "text", order: order++ }));
+    const toCreate = columns
+      .filter((c) => !existingKeys.has(c.key))
+      .map((c) => ({ key: c.key, label: c.label, type: "text", order: order++ }));
 
-  if (toCreate.length) {
-    await prisma.gridColumn.createMany({ data: toCreate, skipDuplicates: true });
-  }
+    if (toCreate.length) {
+      await prisma.gridColumn.createMany({ data: toCreate, skipDuplicates: true });
+    }
 
-  // se for replace, apaga apenas aquela aba
-  if (mode === "replace") {
-    await prisma.gridRow.deleteMany({ where: { sheet } });
-  }
+    // se for replace, apaga apenas aquela aba
+    if (mode === "replace") {
+      await prisma.gridRow.deleteMany({ where: { sheet } });
+    }
 
-  // upsert por (sheet,rowNumber) em lotes
-  const BATCH = 200;
+    // evita timeout de transacao interativa com lotes grandes
+    const BATCH = 200;
+    const UPSERT_CONCURRENCY = 25;
 
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const chunk = rows.slice(i, i + BATCH);
+    for (let i = 0; i < rows.length; i += BATCH) {
+      const chunk = rows.slice(i, i + BATCH);
 
-    await prisma.$transaction(async (tx) => {
-      for (const r of chunk) {
-      const searchText = buildSearchText(r.data);
+      for (let j = 0; j < chunk.length; j += UPSERT_CONCURRENCY) {
+        const upserts = chunk.slice(j, j + UPSERT_CONCURRENCY).map((r) => {
+          const searchText = buildSearchText(r.data);
 
-await tx.gridRow.upsert({
-  where: { sheet_rowNumber: { sheet, rowNumber: r.rowNumber } },
-  create: { sheet, rowNumber: r.rowNumber, data: r.data, searchText },
-  update: { data: r.data, searchText },
-});
+          return prisma.gridRow.upsert({
+            where: { sheet_rowNumber: { sheet, rowNumber: r.rowNumber } },
+            create: { sheet, rowNumber: r.rowNumber, data: r.data, searchText },
+            update: { data: r.data, searchText },
+          });
+        });
+
+        await Promise.all(upserts);
       }
-    });
-  }
+    }
 
-  res.json({ ok: true, sheet, mode, colunas: columns.length, linhas: rows.length });
+    res.json({ ok: true, sheet, mode, colunas: columns.length, linhas: rows.length });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Falha ao importar planilha.";
+    return res.status(500).json({ error: message });
+  }
 });
 
 // -----------------------------
@@ -684,3 +696,4 @@ router.delete("/followups/:id", authMiddleware, async (req, res) => {
   await prisma.followUp.delete({ where: { id } });
   res.json({ ok: true });
 });
+

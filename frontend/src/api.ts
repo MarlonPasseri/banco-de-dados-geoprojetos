@@ -178,3 +178,161 @@ export async function searchGrid(
     items: GridRow[];
   }>(`/grid/search?${qs.toString()}`);
 }
+
+// ---------- Modelagem ----------
+export type Cliente = {
+  id: number;
+  nome: string;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { gps: number };
+};
+
+export type Gp = {
+  id: number;
+  chave: string;
+  grupo: string | null;
+  ano: number | null;
+  os: boolean;
+  aditivo: boolean;
+  tipoServico: string | null;
+  descricao: string | null;
+  clienteId: number | null;
+  createdAt: string;
+  updatedAt: string;
+  cliente?: Cliente | null;
+  _count?: { followUps: number };
+};
+
+export type GpListResponse = {
+  total: number;
+  page: number;
+  pageSize: number;
+  items: Gp[];
+};
+
+export type FollowUp = {
+  id: number;
+  gpId: number;
+  convite: string | null;
+  entrega: string | null;
+  ultimoContato: string | null;
+  status: string | null;
+  valor: number | string | null;
+  createdAt: string;
+  updatedAt: string;
+  gp?: Gp;
+};
+
+export type ListGpsParams = {
+  chave?: string;
+  clienteId?: number;
+  grupo?: string;
+  ano?: number;
+  page?: number;
+  pageSize?: number;
+};
+
+export type SaveGpPayload = {
+  chave?: string;
+  grupo?: string | null;
+  ano?: number | null;
+  os?: boolean;
+  aditivo?: boolean;
+  tipoServico?: string | null;
+  descricao?: string | null;
+  clienteId?: number | null;
+};
+
+export type ListFollowUpsParams = {
+  gpId?: number;
+  gpChave?: string;
+  status?: string;
+};
+
+export type SaveFollowUpPayload = {
+  gpId?: number;
+  gpChave?: string;
+  convite?: string | null;
+  entrega?: string | null;
+  ultimoContato?: string | null;
+  status?: string | null;
+  valor?: number | null;
+};
+
+export async function listClientes() {
+  return http<Cliente[]>(`/clientes`);
+}
+
+export async function createCliente(nome: string) {
+  return http<Cliente>(`/clientes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nome }),
+  });
+}
+
+export async function listGps(params: ListGpsParams = {}) {
+  const qs = new URLSearchParams();
+  if (params.chave) qs.set("chave", params.chave);
+  if (typeof params.clienteId === "number") qs.set("clienteId", String(params.clienteId));
+  if (params.grupo) qs.set("grupo", params.grupo);
+  if (typeof params.ano === "number") qs.set("ano", String(params.ano));
+  if (typeof params.page === "number") qs.set("page", String(params.page));
+  if (typeof params.pageSize === "number") qs.set("pageSize", String(params.pageSize));
+  const q = qs.toString();
+  return http<GpListResponse>(`/gps${q ? `?${q}` : ""}`);
+}
+
+export async function getGp(id: number) {
+  return http<Gp>(`/gps/${id}`);
+}
+
+export async function createGp(payload: SaveGpPayload) {
+  return http<Gp>(`/gps`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateGp(id: number, payload: SaveGpPayload) {
+  return http<Gp>(`/gps/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteGp(id: number) {
+  return http<{ ok: boolean }>(`/gps/${id}`, { method: "DELETE" });
+}
+
+export async function listFollowUps(params: ListFollowUpsParams = {}) {
+  const qs = new URLSearchParams();
+  if (typeof params.gpId === "number") qs.set("gpId", String(params.gpId));
+  if (params.gpChave) qs.set("gpChave", params.gpChave);
+  if (params.status) qs.set("status", params.status);
+  const q = qs.toString();
+  return http<FollowUp[]>(`/followups${q ? `?${q}` : ""}`);
+}
+
+export async function createFollowUp(payload: SaveFollowUpPayload) {
+  return http<FollowUp>(`/followups`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateFollowUp(id: number, payload: SaveFollowUpPayload) {
+  return http<FollowUp>(`/followups/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteFollowUp(id: number) {
+  return http<{ ok: boolean }>(`/followups/${id}`, { method: "DELETE" });
+}

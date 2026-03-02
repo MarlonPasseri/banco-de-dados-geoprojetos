@@ -1,6 +1,6 @@
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { LayoutGrid, Search, Upload, LogOut, PlusSquare, FileEdit } from "lucide-react";
+import { LayoutGrid, Search, Upload, LogOut, PlusSquare, FileEdit, Database } from "lucide-react";
 import { clearToken } from "../api";
 
 function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) {
@@ -42,6 +42,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           <nav className="flex items-center gap-2">
             <NavItem to="/" label="Dashboard" Icon={LayoutGrid} />
             <NavItem to="/consultas" label="Consultas" Icon={Search} />
+            <NavItem to="/modelagem" label="Modelagem" Icon={Database} />
             <NavItem to="/insersao" label="Inserção" Icon={PlusSquare} />
             <NavItem to="/edicao" label="Edição" Icon={FileEdit} />
             <NavItem to="/import" label="Importar" Icon={Upload} />
@@ -73,3 +74,4 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
+

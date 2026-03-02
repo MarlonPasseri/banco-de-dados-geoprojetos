@@ -7,6 +7,7 @@ import Consultas from "./pages/Consultas";
 import AppLayout from "./components/AppLayout";
 import Insersao from "./pages/Insersao";
 import Edicao from "./pages/Edicao";
+import Modelagem from "./pages/Modelagem";
 
 
 function isAuthed() {
@@ -30,6 +31,7 @@ function AnimatedRoutes() {
         <Route path="/import" element={<PrivateRoute><ImportPage /></PrivateRoute>} />
         <Route path="/insersao" element={<PrivateRoute><Insersao /></PrivateRoute>} />
         <Route path="/edicao" element={<PrivateRoute><Edicao /></PrivateRoute>} />
+        <Route path="/modelagem" element={<PrivateRoute><Modelagem /></PrivateRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
