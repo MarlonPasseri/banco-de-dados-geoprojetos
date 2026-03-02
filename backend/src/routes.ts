@@ -21,7 +21,11 @@ const upload = multer({
     const ok =
       file.mimetype === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" ||
       file.originalname.toLowerCase().endsWith(".xlsx");
-    cb(ok ? null : new Error("Apenas arquivos .xlsx são permitidos."), ok);
+    if (ok) {
+      cb(null, true);
+    } else {
+      cb(new Error("Apenas arquivos .xlsx sao permitidos."));
+    }
   },
 });
 
