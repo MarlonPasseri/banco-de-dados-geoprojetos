@@ -21,7 +21,7 @@ function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) 
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-zinc-50 relative overflow-hidden">
+    <div className="min-h-screen relative overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute -top-32 -left-40 h-[520px] w-[520px] rounded-full bg-zinc-900/5 blur-3xl" />
         <div className="absolute -bottom-40 -right-24 h-[520px] w-[520px] rounded-full bg-zinc-900/5 blur-3xl" />
@@ -34,8 +34,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
               GP
             </div>
             <div className="leading-tight">
-              <div className="font-semibold">Banco de Dados</div>
-              <div className="text-xs text-zinc-500">GeoProjetos â€¢ Local</div>
+              <div className="font-semibold heading text-lg">Banco de Dados</div>
+              <div className="text-xs text-zinc-500">GeoProjetos • Local</div>
             </div>
           </div>
 

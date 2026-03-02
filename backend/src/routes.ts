@@ -2,6 +2,7 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
 import multer from "multer";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./db.js";
 import { signToken, authMiddleware } from "./auth.js";
 import { parseContratosSheet, parseSheetToGrid } from "./importExcel.js";
@@ -34,6 +35,9 @@ router.get("/", (_req, res) => {
       "/api/health",
       "/api/setup",
       "/api/auth/login",
+      "/api/clientes",
+      "/api/gps",
+      "/api/followups",
       "/api/contratos",
       "/api/import/contratos",
       "/api/grid",
@@ -55,10 +59,60 @@ function buildSearchText(data: Record<string, any>) {
     .trim();
 }
 
+function normalizeGpChave(v: any) {
+  return String(v ?? "")
+    .trim()
+    .toUpperCase();
+}
+
+function isGpChaveValid(chave: string) {
+  return /^[A-Z0-9]{4}-\d{2}$/.test(chave);
+}
+
+function toBool(v: any, fallback = false) {
+  if (v === undefined || v === null || v === "") return fallback;
+  if (typeof v === "boolean") return v;
+  const s = String(v).trim().toLowerCase();
+  return s === "true" || s === "1" || s === "sim" || s === "yes";
+}
+
+function toDateOrNull(v: any) {
+  if (!v) return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function toIntOrNull(v: any) {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
+function toNumberOrNull(v: any) {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+function toBigIntOrNull(v: any) {
+  if (v === undefined || v === null || v === "") return null;
+  if (typeof v === "bigint") return v;
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0) return BigInt(Math.trunc(v));
+  const s = String(v).trim();
+  return /^\d+$/.test(s) ? BigInt(s) : null;
+}
+
 // -----------------------------
 // AUTH
 // -----------------------------
-router.post("/setup", async (_req, res) => {
+router.post("/setup", async (req, res) => {
+  const setupToken = process.env.SETUP_TOKEN;
+  if (setupToken) {
+    const provided = String(req.headers["x-setup-token"] ?? req.query.token ?? "").trim();
+    if (provided !== setupToken) return res.status(403).json({ error: "setup bloqueado" });
+  }
+
   const username = process.env.ADMIN_USER || "admin";
   const pass = process.env.ADMIN_PASS || "admin123";
 
@@ -191,41 +245,40 @@ router.get("/grid", authMiddleware, async (req, res) => {
 
   let rows: any[] = [];
   if (sortKey) {
+    const dataField = Prisma.raw(`"data"->>'${sortKey}'`);
+    const sortDirSql = Prisma.raw(sortDir);
+
     if (sortKey === "ano") {
-      rows = await prisma.$queryRawUnsafe(
-        `SELECT * FROM "GridRow"
-         WHERE "sheet" = $1
-         ORDER BY
-           CASE
-             WHEN ("data"->>'${sortKey}') ~ '^\\d{4}$' THEN ("data"->>'${sortKey}')::int
-             WHEN ("data"->>'${sortKey}') ~ '^\\d+$' THEN ("data"->>'${sortKey}')::int
-             ELSE NULL
-           END ${sortDir} NULLS LAST,
-           "id" DESC
-         LIMIT $2 OFFSET $3`,
-        sheet,
-        pageSize,
-        skip
+      rows = await prisma.$queryRaw(
+        Prisma.sql`
+          SELECT * FROM "GridRow"
+          WHERE "sheet" = ${sheet}
+          ORDER BY
+            CASE
+              WHEN ${dataField} ~ '^\\d{4}$' THEN (${dataField})::int
+              WHEN ${dataField} ~ '^\\d+$' THEN (${dataField})::int
+              ELSE NULL
+            END ${sortDirSql} NULLS LAST,
+            "id" DESC
+          LIMIT ${pageSize} OFFSET ${skip}
+        `
       );
     } else {
-    const dateExpr = `
-      CASE
-        WHEN ("data"->>'${sortKey}') ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN to_date("data"->>'${sortKey}','YYYY-MM-DD')
-        WHEN ("data"->>'${sortKey}') ~ '^\\d{2}/\\d{2}/\\d{4}$' THEN to_date("data"->>'${sortKey}','DD/MM/YYYY')
-        WHEN ("data"->>'${sortKey}') ~ '^\\d+(\\.\\d+)?$' THEN (date '1899-12-30' + (("data"->>'${sortKey}')::numeric)::int)
-        ELSE NULL
-      END
-    `;
-
-    rows = await prisma.$queryRawUnsafe(
-      `SELECT * FROM "GridRow"
-       WHERE "sheet" = $1
-       ORDER BY ${dateExpr} ${sortDir} NULLS LAST, "id" DESC
-       LIMIT $2 OFFSET $3`,
-      sheet,
-      pageSize,
-      skip
-    );
+      rows = await prisma.$queryRaw(
+        Prisma.sql`
+          SELECT * FROM "GridRow"
+          WHERE "sheet" = ${sheet}
+          ORDER BY
+            CASE
+              WHEN ${dataField} ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN to_date(${dataField}, 'YYYY-MM-DD')
+              WHEN ${dataField} ~ '^\\d{2}/\\d{2}/\\d{4}$' THEN to_date(${dataField}, 'DD/MM/YYYY')
+              WHEN ${dataField} ~ '^\\d+(\\.\\d+)?$' THEN (date '1899-12-30' + (${dataField}::numeric)::int)
+              ELSE NULL
+            END ${sortDirSql} NULLS LAST,
+            "id" DESC
+          LIMIT ${pageSize} OFFSET ${skip}
+        `
+      );
     }
   } else {
     rows = await prisma.gridRow.findMany({ where: { sheet }, orderBy: { id: "desc" }, skip, take: pageSize });
@@ -288,7 +341,8 @@ router.get("/grid/search", authMiddleware, async (req, res) => {
 
 // editar 1 célula (mantém "-" e atualiza searchText)
 router.patch("/grid/rows/:id", authMiddleware, async (req, res) => {
-  const id = BigInt(req.params.id);
+  const id = toBigIntOrNull(req.params.id);
+  if (id === null) return res.status(400).json({ error: "id invalido" });
   const { key, value } = req.body ?? {};
   if (!key) return res.status(400).json({ error: "key obrigatória" });
 
@@ -332,7 +386,8 @@ router.post("/grid/rows", authMiddleware, async (req, res) => {
 
 // excluir linha
 router.delete("/grid/rows/:id", authMiddleware, async (req, res) => {
-  const id = BigInt(req.params.id);
+  const id = toBigIntOrNull(req.params.id);
+  if (id === null) return res.status(400).json({ error: "id invalido" });
   await prisma.gridRow.delete({ where: { id } });
   res.json({ ok: true });
 });
@@ -435,4 +490,197 @@ await tx.gridRow.upsert({
   }
 
   res.json({ ok: true, sheet, mode, colunas: columns.length, linhas: rows.length });
+});
+
+// -----------------------------
+// MODELAGEM NOVA (Cliente, GP, FollowUp)
+// -----------------------------
+
+router.get("/clientes", authMiddleware, async (_req, res) => {
+  const clientes = await prisma.cliente.findMany({
+    orderBy: { nome: "asc" },
+    include: { _count: { select: { gps: true } } },
+  });
+  res.json(clientes);
+});
+
+router.post("/clientes", authMiddleware, async (req, res) => {
+  const nome = String(req.body?.nome ?? "").trim();
+  if (!nome) return res.status(400).json({ error: "nome obrigatorio" });
+
+  const created = await prisma.cliente.create({ data: { nome } });
+  res.json(created);
+});
+
+router.get("/gps", authMiddleware, async (req, res) => {
+  const chave = String(req.query.chave ?? "").trim().toUpperCase();
+  const clienteId = toIntOrNull(req.query.clienteId);
+  const grupo = String(req.query.grupo ?? "").trim();
+  const ano = toIntOrNull(req.query.ano);
+
+  const page = Math.max(Number(req.query.page || 1), 1);
+  const pageSize = Math.min(Math.max(Number(req.query.pageSize || 20), 1), 200);
+  const skip = (page - 1) * pageSize;
+
+  const where: any = {
+    ...(chave ? { chave: { contains: chave, mode: "insensitive" } } : {}),
+    ...(clienteId ? { clienteId } : {}),
+    ...(grupo ? { grupo: { contains: grupo, mode: "insensitive" } } : {}),
+    ...(ano ? { ano } : {}),
+  };
+
+  const [total, items] = await Promise.all([
+    prisma.gp.count({ where }),
+    prisma.gp.findMany({
+      where,
+      orderBy: [{ ano: "desc" }, { chave: "asc" }],
+      skip,
+      take: pageSize,
+      include: {
+        cliente: true,
+        _count: { select: { followUps: true } },
+      },
+    }),
+  ]);
+
+  res.json({ total, page, pageSize, items });
+});
+
+router.get("/gps/:id", authMiddleware, async (req, res) => {
+  const id = toIntOrNull(req.params.id);
+  if (!id) return res.status(400).json({ error: "id invalido" });
+
+  const gp = await prisma.gp.findUnique({
+    where: { id },
+    include: {
+      cliente: true,
+      followUps: { orderBy: [{ ultimoContato: "desc" }, { id: "desc" }] },
+    },
+  });
+
+  if (!gp) return res.status(404).json({ error: "gp nao encontrado" });
+  res.json(gp);
+});
+
+router.post("/gps", authMiddleware, async (req, res) => {
+  const chave = normalizeGpChave(req.body?.chave);
+  if (!isGpChaveValid(chave)) {
+    return res.status(400).json({ error: "chave deve seguir o formato XXXX-NN" });
+  }
+
+  const created = await prisma.gp.create({
+    data: {
+      chave,
+      grupo: req.body?.grupo ? String(req.body.grupo).trim() : null,
+      ano: toIntOrNull(req.body?.ano),
+      os: toBool(req.body?.os, false),
+      aditivo: toBool(req.body?.aditivo, false),
+      tipoServico: req.body?.tipoServico ? String(req.body.tipoServico).trim() : null,
+      descricao: req.body?.descricao ? String(req.body.descricao).trim() : null,
+      clienteId: toIntOrNull(req.body?.clienteId),
+    },
+  });
+
+  res.json(created);
+});
+
+router.patch("/gps/:id", authMiddleware, async (req, res) => {
+  const id = toIntOrNull(req.params.id);
+  if (!id) return res.status(400).json({ error: "id invalido" });
+
+  const data: Record<string, any> = {};
+
+  if (req.body?.chave !== undefined) {
+    const chave = normalizeGpChave(req.body.chave);
+    if (!isGpChaveValid(chave)) {
+      return res.status(400).json({ error: "chave deve seguir o formato XXXX-NN" });
+    }
+    data.chave = chave;
+  }
+  if (req.body?.grupo !== undefined) data.grupo = req.body.grupo ? String(req.body.grupo).trim() : null;
+  if (req.body?.ano !== undefined) data.ano = toIntOrNull(req.body.ano);
+  if (req.body?.os !== undefined) data.os = toBool(req.body.os);
+  if (req.body?.aditivo !== undefined) data.aditivo = toBool(req.body.aditivo);
+  if (req.body?.tipoServico !== undefined) data.tipoServico = req.body.tipoServico ? String(req.body.tipoServico).trim() : null;
+  if (req.body?.descricao !== undefined) data.descricao = req.body.descricao ? String(req.body.descricao).trim() : null;
+  if (req.body?.clienteId !== undefined) data.clienteId = toIntOrNull(req.body.clienteId);
+
+  const updated = await prisma.gp.update({ where: { id }, data });
+  res.json(updated);
+});
+
+router.delete("/gps/:id", authMiddleware, async (req, res) => {
+  const id = toIntOrNull(req.params.id);
+  if (!id) return res.status(400).json({ error: "id invalido" });
+  await prisma.gp.delete({ where: { id } });
+  res.json({ ok: true });
+});
+
+router.get("/followups", authMiddleware, async (req, res) => {
+  const gpId = toIntOrNull(req.query.gpId);
+  const gpChave = String(req.query.gpChave ?? "").trim().toUpperCase();
+  const status = String(req.query.status ?? "").trim();
+
+  const where: any = {
+    ...(gpId ? { gpId } : {}),
+    ...(gpChave ? { gp: { chave: { equals: gpChave, mode: "insensitive" } } } : {}),
+    ...(status ? { status: { contains: status, mode: "insensitive" } } : {}),
+  };
+
+  const items = await prisma.followUp.findMany({
+    where,
+    orderBy: [{ ultimoContato: "desc" }, { id: "desc" }],
+    include: {
+      gp: { include: { cliente: true } },
+    },
+  });
+
+  res.json(items);
+});
+
+router.post("/followups", authMiddleware, async (req, res) => {
+  const gpId = toIntOrNull(req.body?.gpId);
+  const gpChave = normalizeGpChave(req.body?.gpChave);
+
+  let resolvedGpId = gpId;
+  if (!resolvedGpId && gpChave) {
+    const gp = await prisma.gp.findUnique({ where: { chave: gpChave } });
+    resolvedGpId = gp?.id ?? null;
+  }
+  if (!resolvedGpId) return res.status(400).json({ error: "informe gpId ou gpChave valido" });
+
+  const created = await prisma.followUp.create({
+    data: {
+      gpId: resolvedGpId,
+      convite: toDateOrNull(req.body?.convite),
+      entrega: toDateOrNull(req.body?.entrega),
+      ultimoContato: toDateOrNull(req.body?.ultimoContato),
+      status: req.body?.status ? String(req.body.status).trim() : null,
+      valor: toNumberOrNull(req.body?.valor),
+    },
+  });
+
+  res.json(created);
+});
+
+router.patch("/followups/:id", authMiddleware, async (req, res) => {
+  const id = toIntOrNull(req.params.id);
+  if (!id) return res.status(400).json({ error: "id invalido" });
+
+  const data: Record<string, any> = {};
+  if (req.body?.convite !== undefined) data.convite = toDateOrNull(req.body.convite);
+  if (req.body?.entrega !== undefined) data.entrega = toDateOrNull(req.body.entrega);
+  if (req.body?.ultimoContato !== undefined) data.ultimoContato = toDateOrNull(req.body.ultimoContato);
+  if (req.body?.status !== undefined) data.status = req.body.status ? String(req.body.status).trim() : null;
+  if (req.body?.valor !== undefined) data.valor = toNumberOrNull(req.body.valor);
+
+  const updated = await prisma.followUp.update({ where: { id }, data });
+  res.json(updated);
+});
+
+router.delete("/followups/:id", authMiddleware, async (req, res) => {
+  const id = toIntOrNull(req.params.id);
+  if (!id) return res.status(400).json({ error: "id invalido" });
+  await prisma.followUp.delete({ where: { id } });
+  res.json({ ok: true });
 });
