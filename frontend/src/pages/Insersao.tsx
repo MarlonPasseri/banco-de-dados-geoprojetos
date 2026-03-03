@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { DatabaseZap } from "lucide-react";
 import { createRow, deleteRow, fetchGrid, searchGrid, updateCell, type GridColumn, type GridRow } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
+import { EmptyState } from "../components/UiStates";
 import { safeUUID } from "../utils/uuid";
 
 function norm(s: string) {
@@ -17,7 +19,6 @@ function toDash(v: any) {
   return s ? s : "-";
 }
 
-// Aceita dd/mm/yyyy, yyyy-mm-dd ou vazio
 function normalizeDateInput(v: string) {
   const s = v.trim();
   if (!s) return "-";
@@ -27,20 +28,15 @@ function normalizeDateInput(v: string) {
   return s;
 }
 
-// Converte "R$ 1.234,56" -> 1234.56 (number)
-// Se inválido ou vazio -> "-"
 function normalizeMoneyInput(v: string) {
   let s = String(v ?? "").trim();
   if (!s) return "-";
 
-  // aceita negativo no formato (1.234,56)
   const isNeg = /^\(.*\)$/.test(s);
   if (isNeg) s = s.slice(1, -1);
 
-  // remove moeda/símbolos e mantém dígitos , . -
   s = s.replace(/[^\d,.\-]/g, "");
 
-  // BR: 1.234,56 -> 1234.56
   if (s.includes(",") && s.includes(".")) {
     s = s.replace(/\./g, "").replace(",", ".");
   } else if (s.includes(",")) {
@@ -54,7 +50,7 @@ function normalizeMoneyInput(v: string) {
 
 type KeyMap = {
   cliente?: string;
-  numero?: string; // N.º
+  numero?: string;
   grupo?: string;
   convite?: string;
   ano?: string;
@@ -98,6 +94,7 @@ export default function Insersao() {
   function toastError(title: string, text: string) {
     setToast({ id: safeUUID(), type: "error", title, text });
   }
+
   function toastOk(title: string, text: string) {
     setToast({ id: safeUUID(), type: "success", title, text });
   }
@@ -114,11 +111,7 @@ export default function Insersao() {
 
         const map: KeyMap = {
           cliente: byLabel.get(norm("CLIENTE")),
-          numero:
-            byLabel.get(norm("N.º")) ||
-            byLabel.get(norm("Nº")) ||
-            byLabel.get(norm("N°")) ||
-            byLabel.get(norm("N")),
+          numero: byLabel.get(norm("N.º")) || byLabel.get(norm("Nº")) || byLabel.get(norm("N°")) || byLabel.get(norm("N")),
           grupo: byLabel.get(norm("GRUPO")),
           convite: byLabel.get(norm("CONVITE")),
           ano: byLabel.get(norm("ANO")),
@@ -133,7 +126,6 @@ export default function Insersao() {
         toastError("Erro", e?.message || "Falha ao carregar colunas");
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function clearForm() {
@@ -182,7 +174,7 @@ export default function Insersao() {
 
   async function onBuscar() {
     if (!canSearch) return;
-    if (!keyMap.numero) return toastError("Configuração", 'Não encontrei a coluna "N.º" no GridColumn. Importe a planilha primeiro.');
+    if (!keyMap.numero) return toastError("Configuracao", 'Nao encontrei a coluna "N.º" no GridColumn. Importe a planilha primeiro.');
 
     setLoading(true);
     try {
@@ -191,14 +183,14 @@ export default function Insersao() {
       const row = exact || (r.items || [])[0];
 
       if (!row) {
-        toastError("Não encontrado", `Nenhum registro com N.º = ${numero}`);
+        toastError("Nao encontrado", `Nenhum registro com N.º = ${numero}`);
         setCurrentRow(null);
         return;
       }
 
       setCurrentRow(row);
       fillFromRow(row);
-      toastOk("Encontrado", "Registro carregado para edição.");
+      toastOk("Encontrado", "Registro carregado para edicao.");
     } catch (e: any) {
       toastError("Erro", e?.message || "Falha ao buscar");
     } finally {
@@ -207,8 +199,8 @@ export default function Insersao() {
   }
 
   async function onInserir() {
-    if (!keyMap.numero) return toastError("Configuração", 'Não encontrei a coluna "N.º" no GridColumn. Importe a planilha primeiro.');
-    if (!String(numero).trim()) return toastError("Validação", "Informe o N.º (GP).");
+    if (!keyMap.numero) return toastError("Configuracao", 'Nao encontrei a coluna "N.º" no GridColumn. Importe a planilha primeiro.');
+    if (!String(numero).trim()) return toastError("Validacao", "Informe o N.º (GP).");
 
     setLoading(true);
     try {
@@ -224,13 +216,13 @@ export default function Insersao() {
   }
 
   async function onSalvarEdicao() {
-    if (!currentRow) return toastError("Edição", "Busque um registro primeiro (pelo N.º) para editar.");
+    if (!currentRow) return toastError("Edicao", "Busque um registro primeiro (pelo N.º) para editar.");
 
     setLoading(true);
     try {
       const payload = buildDataPayload();
       await Promise.all(Object.entries(payload).map(([k, v]) => updateCell(currentRow.id, k, v)));
-      toastOk("Salvo", "Alterações salvas com sucesso.");
+      toastOk("Salvo", "Alteracoes salvas com sucesso.");
     } catch (e: any) {
       toastError("Erro ao salvar", e?.message || "Falha ao salvar");
     } finally {
@@ -246,7 +238,7 @@ export default function Insersao() {
     setLoading(true);
     try {
       await deleteRow(currentRow.id);
-      toastOk("Excluído", "Registro removido.");
+      toastOk("Excluido", "Registro removido.");
       clearForm();
     } catch (e: any) {
       toastError("Erro ao excluir", e?.message || "Falha ao excluir");
@@ -274,30 +266,33 @@ export default function Insersao() {
     <motion.div className="space-y-6" variants={container} initial="hidden" animate="show">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <motion.div
-        className="card p-5"
-        variants={item}
-      >
-        <div className="text-xs uppercase tracking-wide text-zinc-500">Cadastros</div>
-        <h1 className="text-2xl font-semibold">Inserção</h1>
-        <p className="text-sm text-zinc-500">Insira, edite ou exclua registros no Grid ({sheet}).</p>
+      <motion.div className="page-hero" variants={item}>
+        <div>
+          <div className="page-kicker">Cadastros</div>
+          <h1 className="page-title inline-flex items-center gap-2">
+            <DatabaseZap size={22} />
+            Insercao
+          </h1>
+          <p className="page-desc">Insira, edite ou exclua registros no Grid ({sheet}).</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="badge">Aba: {sheet}</span>
+          <span className="badge">{currentRow ? "Modo edicao" : "Modo insercao"}</span>
+        </div>
       </motion.div>
 
       {missingCols.length > 0 && (
-        <motion.div className="card p-4 text-sm" variants={item}>
-          <p className="font-semibold text-amber-700">Atenção</p>
+        <motion.div className="panel-soft text-sm" variants={item}>
+          <p className="font-semibold text-amber-700">Atencao</p>
           <p className="text-zinc-600">
-            Não encontrei estas colunas no GridColumn: <b>{missingCols.join(", ")}</b>.
+            Nao encontrei estas colunas no GridColumn: <b>{missingCols.join(", ")}</b>.
           </p>
           <p className="text-zinc-600">Importe a planilha novamente pelo Dashboard para criar as colunas.</p>
         </motion.div>
       )}
 
-      <motion.div
-        className="card p-4 space-y-4 bg-white/80"
-        variants={item}
-      >
-        <div className="flex flex-col md:flex-row gap-3 md:items-end">
+      <motion.div className="panel-soft space-y-4" variants={item}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-end">
           <div className="space-y-1">
             <label className="text-sm text-zinc-600">N.º (GP)</label>
             <input className="input w-64" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex: 2949" />
@@ -314,11 +309,19 @@ export default function Insersao() {
           </div>
 
           <div className="ml-auto text-sm text-zinc-600">
-            {currentRow ? <span className="badge">Modo edição</span> : <span className="badge">Modo inserção</span>}
+            {currentRow ? <span className="badge">Modo edicao</span> : <span className="badge">Modo insercao</span>}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {!currentRow && (
+          <EmptyState
+            compact
+            title="Pronto para inserir"
+            text="Preencha os campos e clique em Inserir. Use o N.º para buscar e entrar em modo de edicao."
+          />
+        )}
+
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="space-y-1">
             <label className="text-sm text-zinc-600">Cliente</label>
             <input className="input" value={cliente} onChange={(e) => setCliente(e.target.value)} />
@@ -356,7 +359,7 @@ export default function Insersao() {
           </div>
 
           <div className="space-y-1">
-            <label className="text-sm text-zinc-600">Último Contato</label>
+            <label className="text-sm text-zinc-600">Ultimo Contato</label>
             <input className="input" value={ultimoContato} onChange={(e) => setUltimoContato(e.target.value)} placeholder="dd/mm/aaaa ou aaaa-mm-dd" />
           </div>
         </div>
@@ -369,7 +372,7 @@ export default function Insersao() {
           ) : (
             <>
               <button className="btn btn-primary" disabled={loading} onClick={onSalvarEdicao}>
-                {loading ? "Salvando..." : "Salvar edição"}
+                {loading ? "Salvando..." : "Salvar edicao"}
               </button>
               <button className="btn btn-danger" disabled={loading} onClick={onExcluir}>
                 Excluir

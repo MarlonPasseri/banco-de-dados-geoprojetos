@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { FilePenLine } from "lucide-react";
 import { fetchGrid, searchGrid, updateCell, type GridColumn, type GridRow } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
+import { EmptyState } from "../components/UiStates";
 import { safeUUID } from "../utils/uuid";
 
 function norm(s: string) {
@@ -55,6 +57,7 @@ function formatMoneyValue(v: any) {
   if (typeof v === "number" && Number.isFinite(v)) {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
   }
+
   let s = String(v).trim();
   if (!s) return "-";
 
@@ -83,6 +86,7 @@ export default function Edicao() {
     hidden: { opacity: 0, y: 10 },
     show: { opacity: 1, y: 0, transition: { duration: 0.25 } },
   };
+
   const sheet = "CONTRATOS";
 
   const [toast, setToast] = useState<ToastMsg | null>(null);
@@ -104,6 +108,7 @@ export default function Edicao() {
   function toastError(title: string, text: string) {
     setToast({ id: safeUUID(), type: "error", title, text });
   }
+
   function toastOk(title: string, text: string) {
     setToast({ id: safeUUID(), type: "success", title, text });
   }
@@ -119,18 +124,13 @@ export default function Edicao() {
         for (const c of cols) byLabel.set(norm(c.label), c.key);
 
         const key =
-          byLabel.get(norm("N.º")) ||
-          byLabel.get(norm("Nº")) ||
-          byLabel.get(norm("N°")) ||
-          byLabel.get(norm("N")) ||
-          null;
+          byLabel.get(norm("N.º")) || byLabel.get(norm("Nº")) || byLabel.get(norm("N°")) || byLabel.get(norm("N")) || null;
 
         setKeyNumero(key);
       } catch (e: any) {
         toastError("Erro", e?.message || "Falha ao carregar colunas");
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function clearForm() {
@@ -145,18 +145,16 @@ export default function Edicao() {
 
   async function onBuscar() {
     if (!canSearch) return;
-    if (!keyNumero) return toastError("Configuração", 'Não encontrei a coluna "N.º". Importe a planilha primeiro.');
+    if (!keyNumero) return toastError("Configuracao", 'Nao encontrei a coluna "N.º". Importe a planilha primeiro.');
 
     setLoading(true);
     try {
       const r = await searchGrid(String(numero).trim(), sheet, 1, 50);
-      const exact = (r.items || []).find(
-        (it) => String(it.data?.[keyNumero!]).trim() === String(numero).trim()
-      );
+      const exact = (r.items || []).find((it) => String(it.data?.[keyNumero!]).trim() === String(numero).trim());
       const row = exact || (r.items || [])[0];
 
       if (!row) {
-        toastError("Não encontrado", `Nenhum registro com N.º = ${numero}`);
+        toastError("Nao encontrado", `Nenhum registro com N.º = ${numero}`);
         setCurrentRow(null);
         setFormData({});
         return;
@@ -168,7 +166,7 @@ export default function Edicao() {
       setEditValue("");
       lastEditKeyRef.current = null;
       lastEditValueRef.current = "";
-      toastOk("Encontrado", "Registro carregado para edição.");
+      toastOk("Encontrado", "Registro carregado para edicao.");
     } catch (e: any) {
       toastError("Erro", e?.message || "Falha ao buscar");
     } finally {
@@ -177,13 +175,12 @@ export default function Edicao() {
   }
 
   async function onSalvar() {
-    if (!currentRow) return toastError("Edição", "Busque um registro primeiro.");
+    if (!currentRow) return toastError("Edicao", "Busque um registro primeiro.");
 
     setLoading(true);
     try {
       const mergedData = { ...formData };
 
-      // garante que o último valor digitado entra no payload mesmo sem blur
       if (lastEditKeyRef.current) {
         mergedData[lastEditKeyRef.current] = lastEditValueRef.current;
       } else if (editingKey) {
@@ -200,19 +197,18 @@ export default function Edicao() {
         const value = toDash(mergedData[c.key]);
         await updateCell(currentRow.id, c.key, value);
       }
-      // recarrega do banco para refletir exatamente o que foi salvo
+
       if (keyNumero && String(numero).trim()) {
         const r = await searchGrid(String(numero).trim(), sheet, 1, 50);
-        const exact = (r.items || []).find(
-          (it) => String(it.data?.[keyNumero!]).trim() === String(numero).trim()
-        );
+        const exact = (r.items || []).find((it) => String(it.data?.[keyNumero!]).trim() === String(numero).trim());
         const row = exact || (r.items || [])[0] || null;
         if (row) {
           setCurrentRow(row);
           setFormData({ ...(row.data || {}) });
         }
       }
-      toastOk("Salvo", "Alterações salvas com sucesso.");
+
+      toastOk("Salvo", "Alteracoes salvas com sucesso.");
     } catch (e: any) {
       toastError("Erro ao salvar", e?.message || "Falha ao salvar");
     } finally {
@@ -246,39 +242,33 @@ export default function Edicao() {
     <motion.div className="space-y-6" variants={container} initial="hidden" animate="show">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <motion.div
-        className="card p-5"
-        variants={item}
-      >
-        <div className="text-xs uppercase tracking-wide text-zinc-500">Atualização</div>
-        <h1 className="text-2xl font-semibold">Edição</h1>
-        <p className="text-sm text-zinc-500">
-          Pesquise pelo N.º e edite todas as informações do registro.
-        </p>
+      <motion.div className="page-hero" variants={item}>
+        <div>
+          <div className="page-kicker">Atualizacao</div>
+          <h1 className="page-title inline-flex items-center gap-2">
+            <FilePenLine size={22} />
+            Edicao
+          </h1>
+          <p className="page-desc">Pesquise pelo N.º e edite todas as informacoes do registro.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="badge">Aba: {sheet}</span>
+          <span className="badge">{currentRow ? "Registro carregado" : "Aguardando busca"}</span>
+        </div>
       </motion.div>
 
       {!keyNumero && (
-        <motion.div className="card p-4 text-sm" variants={item}>
-          <p className="font-semibold text-amber-700">Atenção</p>
-          <p className="text-zinc-600">
-            Não encontrei a coluna <b>N.º</b>. Importe a planilha novamente pelo Dashboard.
-          </p>
+        <motion.div className="panel-soft text-sm" variants={item}>
+          <p className="font-semibold text-amber-700">Atencao</p>
+          <p className="text-zinc-600">Nao encontrei a coluna <b>N.º</b>. Importe a planilha novamente pelo Dashboard.</p>
         </motion.div>
       )}
 
-      <motion.div
-        className="card p-4 space-y-4 bg-white/80"
-        variants={item}
-      >
-        <div className="flex flex-col md:flex-row gap-3 md:items-end">
+      <motion.div className="panel-soft space-y-4" variants={item}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-end">
           <div className="space-y-1">
             <label className="text-sm text-zinc-600">N.º (GP)</label>
-            <input
-              className="input w-64"
-              value={numero}
-              onChange={(e) => setNumero(e.target.value)}
-              placeholder="Ex: 2949"
-            />
+            <input className="input w-64" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex: 2949" />
           </div>
 
           <div className="flex gap-2">
@@ -289,28 +279,31 @@ export default function Edicao() {
               Limpar
             </button>
             <button className="btn btn-primary" disabled={loading || !currentRow} onClick={onSalvar}>
-              {loading ? "Salvando..." : "Salvar alterações"}
+              {loading ? "Salvando..." : "Salvar alteracoes"}
             </button>
           </div>
         </div>
 
         {!currentRow ? (
-          <div className="text-sm text-zinc-500">Nenhum registro carregado.</div>
+          <EmptyState
+            title="Nenhum registro carregado"
+            text="Informe o N.º (GP) e clique em Buscar para editar os dados."
+          />
         ) : (
-          <div className="border rounded-2xl overflow-hidden">
+          <div className="table-shell">
             <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
               <table className="min-w-[1400px] w-full text-sm">
-                <thead className="sticky top-0 bg-white z-10 border-b">
+                <thead className="sticky top-0 z-10 border-b bg-white">
                   <tr>
                     {columns.map((c) => (
-                      <th key={c.key} className="text-left py-2 px-3 whitespace-nowrap">
+                      <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
                         {c.label}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  <tr className="border-b hover:bg-gray-50">
+                  <tr className="border-b">
                     {columns.map((c) => {
                       const isEditing = editingKey === c.key;
                       const cellValue = formData[c.key];
@@ -319,17 +312,18 @@ export default function Edicao() {
                         : isMoneyLabel(c.label)
                         ? formatMoneyValue(cellValue)
                         : String(cellValue ?? "-");
+
                       return (
                         <td
                           key={c.key}
-                          className="py-2 px-3 whitespace-nowrap"
+                          className="whitespace-nowrap px-3 py-2"
                           onDoubleClick={() => startEdit(c.key, cellValue)}
                           title="Duplo clique para editar"
                           style={{ cursor: "cell" }}
                         >
                           {isEditing ? (
                             <input
-                              className="border rounded px-2 py-1 w-full min-w-[140px]"
+                              className="input w-full min-w-[140px] py-1"
                               value={editValue}
                               onChange={(e) => {
                                 setEditValue(e.target.value);

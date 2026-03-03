@@ -7,14 +7,15 @@
 /* Base theme tokens */
 :root {
   color-scheme: light;
-  --bg: #f7f7fb;
+  --bg: #f4f7fb;
   --card: #ffffff;
-  --card-muted: #fbfbff;
-  --border: #e4e4ed;
+  --card-muted: #f8fafc;
+  --border: #dbe3ef;
   --text: #0f172a;
   --muted: #6b7280;
-  --accent: #111827;
+  --accent: #0f172a;
   --accent-foreground: #ffffff;
+  --ring: #2563eb;
   --radius: 16px;
 }
 
@@ -25,9 +26,9 @@ body,
 }
 
 body {
-  background: radial-gradient(circle at 15% 20%, rgba(17, 24, 39, 0.08), transparent 36%),
-    radial-gradient(circle at 85% 70%, rgba(17, 24, 39, 0.07), transparent 32%),
-    var(--bg);
+  background: radial-gradient(circle at 14% 12%, rgba(14, 116, 144, 0.13), transparent 34%),
+    radial-gradient(circle at 88% 82%, rgba(217, 119, 6, 0.11), transparent 32%),
+    linear-gradient(180deg, #f8fbff 0%, var(--bg) 100%);
   color: var(--text);
   font-family: "Inter Tight", system-ui, -apple-system, sans-serif;
   font-feature-settings: "cv02", "cv03", "cv04", "cv11";
@@ -61,52 +62,58 @@ h3,
 
 /* Component helpers */
 .card {
-  @apply border shadow-sm transition-all;
+  @apply border transition-all;
   background: var(--card);
   border-color: var(--border);
   border-radius: var(--radius);
+  box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
 }
 
 .card:hover {
-  @apply shadow-md -translate-y-0.5;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.09);
+  transform: translateY(-2px);
 }
 
 .btn {
-  @apply inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
+  @apply inline-flex items-center justify-center gap-2 px-3 py-2 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed;
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) - 6px);
   color: var(--text);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
   @apply transition-transform hover:-translate-y-0.5 active:translate-y-0;
 }
 
 .btn:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent), #1f2937);
   color: var(--accent-foreground);
-  border-color: #111827;
+  border-color: #0f172a;
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.22);
 }
 
 .btn-primary:hover {
-  background: #0b1224;
+  background: linear-gradient(135deg, #0b1224, #172033);
 }
 
 .input {
   @apply w-full text-sm outline-none transition;
-  background: var(--card);
+  background: #ffffff;
   border: 1px solid var(--border);
   border-radius: calc(var(--radius) - 6px);
   padding: 10px 12px;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 
 .input:focus-visible {
-  outline: 2px solid #2563eb;
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-color: #2563eb33;
+  box-shadow: 0 0 0 5px rgba(37, 99, 235, 0.08);
 }
 
 .badge {
@@ -116,4 +123,121 @@ h3,
   background: var(--card-muted);
   color: var(--muted);
   padding: 4px 8px;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #7f1d1d, #991b1b);
+  color: #ffffff;
+  border-color: #7f1d1d;
+  box-shadow: 0 10px 22px rgba(127, 29, 29, 0.22);
+}
+
+.btn-danger:hover {
+  background: linear-gradient(135deg, #6b1515, #7f1d1d);
+}
+
+.page-hero {
+  @apply card p-5 flex flex-col gap-4 md:flex-row md:items-end md:justify-between;
+  background: linear-gradient(145deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.page-kicker {
+  @apply text-xs uppercase tracking-wide text-zinc-500;
+}
+
+.page-title {
+  @apply text-2xl font-semibold heading text-zinc-900;
+}
+
+.page-desc {
+  @apply text-sm text-zinc-500;
+}
+
+.panel-soft {
+  @apply card p-4;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(6px);
+}
+
+.table-shell {
+  @apply overflow-hidden rounded-2xl border bg-white/95;
+  border-color: var(--border);
+}
+
+.table-shell thead {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.table-shell tbody tr:hover {
+  background: #f8fbff;
+}
+
+.app-header {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.82));
+}
+
+.nav-link {
+  @apply inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition-all;
+  color: #334155;
+  border: 1px solid transparent;
+}
+
+.nav-link:hover {
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  color: #0f172a;
+}
+
+.nav-link-active {
+  color: #0f172a;
+  background: linear-gradient(145deg, #f0f6ff 0%, #e2ecff 100%);
+  border-color: #bfdbfe;
+  box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.32);
+}
+
+.empty-state {
+  @apply rounded-2xl border border-dashed border-zinc-200 bg-white/70 px-4 text-center;
+}
+
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e2e8f0;
+}
+
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.progress-fill {
+  position: relative;
+  background: linear-gradient(90deg, #0f172a, #1e293b);
+}
+
+.progress-fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  background-image: linear-gradient(120deg, transparent 0%, #ffffff 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: progress-glint 1.4s linear infinite;
+}
+
+@keyframes progress-glint {
+  100% {
+    background-position: -200% 0;
+  }
 }

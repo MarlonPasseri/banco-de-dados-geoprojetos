@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
+import { LayoutGrid, RefreshCw, SlidersHorizontal, UploadCloud } from "lucide-react";
+import { EmptyState, TableSkeletonRows } from "../components/UiStates";
 import {
   createColumn,
   createRow,
@@ -296,13 +298,16 @@ export default function Dashboard() {
   return (
     <motion.div className="space-y-6" variants={container} initial="hidden" animate="show">
       <motion.div
-        className="card p-5 flex flex-col md:flex-row md:items-end md:justify-between gap-4"
+        className="page-hero"
         variants={item}
       >
         <div>
-          <div className="text-xs uppercase tracking-wide text-zinc-500">Painel</div>
-          <h1 className="text-2xl font-semibold">Dashboard</h1>
-          <p className="text-sm text-zinc-500">
+          <div className="page-kicker">Painel</div>
+          <h1 className="page-title inline-flex items-center gap-2">
+            <LayoutGrid size={22} />
+            Dashboard
+          </h1>
+          <p className="page-desc">
             Controle suas planilhas e visualize tudo com rapidez.
           </p>
         </div>
@@ -319,19 +324,19 @@ export default function Dashboard() {
       </motion.div>
 
       <header className="flex flex-col gap-3">
-        <motion.div className="border rounded-2xl p-3 bg-white/80" variants={item}>
+        <motion.div className="panel-soft" variants={item}>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">Aba:</span>
               <input
-                className="border rounded-lg px-3 py-2 w-48"
+                className="input w-48"
                 value={sheet}
                 onChange={(e) => setSheet(e.target.value)}
                 placeholder="CONTRATOS"
               />
             </div>
 
-            <label className="text-sm text-gray-700 flex items-center gap-2 border rounded-lg px-3 py-2 bg-white shadow-sm">
+            <label className="text-sm text-gray-700 flex items-center gap-2 border rounded-lg px-3 py-2 bg-white">
               <input
                 type="checkbox"
                 className="h-4 w-4 accent-zinc-900"
@@ -341,14 +346,16 @@ export default function Dashboard() {
               Mais recentes por ano
             </label>
             {sortByDate && sheet.toUpperCase() === "CONTRATOS" && (
-              <span className="text-xs text-gray-500">
+              <span className="badge">
+                <SlidersHorizontal size={13} className="mr-1" />
                 {dateKey ? `Campo: ${dateLabel || dateKey}` : "Nenhuma coluna de data encontrada"}
               </span>
             )}
 
             <div className="ml-auto flex items-center gap-2">
               <span className="text-sm text-gray-600">Importar:</span>
-              <label className="text-sm text-gray-700 flex items-center gap-2 border rounded-lg px-3 py-2 bg-white shadow-sm cursor-pointer">
+              <label className="text-sm text-gray-700 flex items-center gap-2 border rounded-lg px-3 py-2 bg-white cursor-pointer">
+                <UploadCloud size={15} />
                 <span>{file ? file.name : "Escolher arquivo (.xlsx)"}</span>
                 <input
                   className="hidden"
@@ -361,6 +368,7 @@ export default function Dashboard() {
                 Importar
               </button>
               <button className="btn" onClick={reload}>
+                <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
                 Recarregar
               </button>
             </div>
@@ -378,7 +386,7 @@ export default function Dashboard() {
               Página {page} / {totalPages}
             </span>
             <input
-              className="border rounded-lg px-2 py-1 w-20"
+              className="input w-20 py-1"
               type="number"
               min={1}
               max={totalPages}
@@ -402,7 +410,7 @@ export default function Dashboard() {
         </motion.div>
       </header>
 
-      <motion.section className="border rounded-2xl overflow-hidden" variants={item}>
+      <motion.section className="table-shell" variants={item}>
         <div className="overflow-auto" style={{ maxHeight: "70vh" }}>
           <table className="min-w-[1400px] w-full text-sm">
             <thead className="sticky top-0 bg-white z-10 border-b">
@@ -429,20 +437,20 @@ export default function Dashboard() {
 
             <tbody>
               {loading ? (
-                <tr>
-                  <td className="py-6 px-3" colSpan={columns.length + 1}>
-                    Carregando...
-                  </td>
-                </tr>
+                <TableSkeletonRows cols={Math.max(columns.length, 6)} rows={6} withActions />
               ) : rows.length === 0 ? (
                 <tr>
-                  <td className="py-6 px-3" colSpan={columns.length + 1}>
-                    Nenhuma linha para o sheet <b>{sheet}</b>.
+                  <td className="py-4 px-3" colSpan={columns.length + 1}>
+                    <EmptyState
+                      compact
+                      title="Nenhuma linha encontrada"
+                      text={`Nao ha registros para a aba ${sheet}.`}
+                    />
                   </td>
                 </tr>
               ) : (
                 rows.map((r) => (
-                  <tr key={r.id} className="border-b hover:bg-gray-50">
+                  <tr key={r.id} className="border-b transition-colors">
                     <td className="py-2 px-3">
                       <button className="text-xs border rounded px-2 py-1" onClick={() => onDeleteRow(r.id)}>
                         Excluir
@@ -469,7 +477,7 @@ export default function Dashboard() {
                           {isEditing ? (
                             <input
                               ref={inputRef}
-                              className="border rounded px-2 py-1 w-full min-w-[140px]"
+                              className="input w-full min-w-[140px] py-1"
                               value={editValue}
                               onChange={(e) => setEditValue(e.target.value)}
                               onKeyDown={(e) => {

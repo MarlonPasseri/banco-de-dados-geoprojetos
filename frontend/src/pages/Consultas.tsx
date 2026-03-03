@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { Search, SearchX } from "lucide-react";
 import { searchGrid, type GridColumn, type GridRow } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
+import { EmptyState, TableSkeletonRows } from "../components/UiStates";
 import { safeUUID } from "../utils/uuid";
-
 
 function fmt(v: any) {
   if (v === null || v === undefined || v === "") return "-";
@@ -19,6 +20,7 @@ export default function Consultas() {
     hidden: { opacity: 0, y: 10 },
     show: { opacity: 1, y: 0, transition: { duration: 0.25 } },
   };
+
   const [toast, setToast] = useState<ToastMsg | null>(null);
 
   const [sheet, setSheet] = useState("CONTRATOS");
@@ -85,34 +87,35 @@ export default function Consultas() {
     <motion.div className="space-y-6" variants={container} initial="hidden" animate="show">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <motion.div
-        className="card p-5"
-        variants={item}
-      >
-        <div className="text-xs uppercase tracking-wide text-zinc-500">Busca</div>
-        <h1 className="text-2xl font-semibold">Consultas</h1>
-        <p className="text-sm text-zinc-500">
-          Pesquise no banco inteiro. Aqui só aparecem resultados da busca.
-        </p>
+      <motion.div className="page-hero" variants={item}>
+        <div>
+          <div className="page-kicker">Busca</div>
+          <h1 className="page-title inline-flex items-center gap-2">
+            <Search size={22} />
+            Consultas
+          </h1>
+          <p className="page-desc">Pesquise no banco inteiro. Aqui aparecem apenas resultados da busca.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="badge">Aba: {sheet}</span>
+          <span className="badge">Resultados: {total}</span>
+        </div>
       </motion.div>
 
-      <motion.div
-        className="card p-4 space-y-3 bg-white/80"
-        variants={item}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <motion.div className="panel-soft space-y-3" variants={item}>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="space-y-1">
             <label className="text-sm text-zinc-600">Aba</label>
             <input className="input" value={sheet} onChange={(e) => setSheet(e.target.value)} />
           </div>
 
-          <div className="md:col-span-2 space-y-1">
+          <div className="space-y-1 md:col-span-2">
             <label className="text-sm text-zinc-600">Pesquisar</label>
             <input
               className="input"
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Digite (mín. 2 caracteres)…"
+              placeholder="Digite (min. 2 caracteres)..."
             />
             <p className="text-xs text-zinc-500">A busca procura em todas as colunas.</p>
           </div>
@@ -121,9 +124,9 @@ export default function Consultas() {
         <div className="flex items-center justify-between gap-3">
           <div className="text-sm text-zinc-600">
             {!canSearch ? (
-              <span className="badge">Digite algo para começar</span>
+              <span className="badge">Digite algo para comecar</span>
             ) : loading ? (
-              <span className="badge">Buscando…</span>
+              <span className="badge">Buscando...</span>
             ) : (
               <span className="badge">Resultados: {total}</span>
             )}
@@ -135,10 +138,10 @@ export default function Consultas() {
                 Anterior
               </button>
               <span className="text-sm text-zinc-600">
-                Página {page} / {totalPages}
+                Pagina {page} / {totalPages}
               </span>
               <button className="btn" disabled={page >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>
-                Próxima
+                Proxima
               </button>
             </div>
           )}
@@ -146,19 +149,34 @@ export default function Consultas() {
       </motion.div>
 
       {!canSearch ? (
-        <div className="card p-6 text-sm text-zinc-600">Digite algo acima para consultar.</div>
+        <div className="panel-soft">
+          <EmptyState
+            title="Digite para iniciar a busca"
+            text="Use pelo menos dois caracteres para consultar em todas as colunas."
+          />
+        </div>
       ) : loading ? (
-        <div className="card p-6 text-sm text-zinc-600">Buscando no banco…</div>
-      ) : items.length === 0 ? (
-        <div className="card p-6 text-sm text-zinc-600">Nenhum resultado.</div>
-      ) : (
-        <div className="card overflow-hidden">
+        <div className="table-shell">
           <div className="overflow-auto" style={{ maxHeight: "70vh" }}>
             <table className="min-w-[1200px] w-full text-sm">
-              <thead className="sticky top-0 bg-white z-10 border-b">
+              <tbody>
+                <TableSkeletonRows cols={Math.max(columns.length, 5)} rows={7} />
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="panel-soft">
+          <EmptyState Icon={SearchX} title="Nenhum resultado" text="Tente outro termo, aba ou pagina de busca." />
+        </div>
+      ) : (
+        <div className="table-shell">
+          <div className="overflow-auto" style={{ maxHeight: "70vh" }}>
+            <table className="min-w-[1200px] w-full text-sm">
+              <thead className="sticky top-0 z-10 border-b bg-white">
                 <tr>
                   {columns.map((c) => (
-                    <th key={c.key} className="text-left py-2 px-3 whitespace-nowrap">
+                    <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
                       {c.label}
                     </th>
                   ))}
@@ -167,9 +185,9 @@ export default function Consultas() {
 
               <tbody>
                 {items.map((r) => (
-                  <tr key={r.id} className="border-b hover:bg-zinc-50">
+                  <tr key={r.id} className="border-b transition-colors">
                     {columns.map((c) => (
-                      <td key={c.key} className="py-2 px-3 whitespace-nowrap">
+                      <td key={c.key} className="whitespace-nowrap px-3 py-2">
                         {fmt(r.data?.[c.key])}
                       </td>
                     ))}
@@ -179,9 +197,7 @@ export default function Consultas() {
             </table>
           </div>
 
-          <div className="p-3 text-xs text-zinc-500 border-t">
-            Mostrando {items.length} nesta página (de {total} no total).
-          </div>
+          <div className="border-t p-3 text-xs text-zinc-500">Mostrando {items.length} nesta pagina (de {total} no total).</div>
         </div>
       )}
     </motion.div>

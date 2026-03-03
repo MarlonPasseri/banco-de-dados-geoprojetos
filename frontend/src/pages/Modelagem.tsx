@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { Database } from "lucide-react";
 import {
   createCliente,
   createFollowUp,
@@ -16,6 +17,7 @@ import {
   updateGp,
 } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
+import { EmptyState, TableSkeletonRows } from "../components/UiStates";
 import { safeUUID } from "../utils/uuid";
 
 type TabId = "clientes" | "gps" | "followups";
@@ -96,7 +98,7 @@ function normalizeChave(value: string) {
 }
 
 function isValidChave(value: string) {
-  return /^[A-Z0-9]{4}-\d{2}$/.test(value);
+  return /^[A-Z0-9]{4}-\d{2}$/.test(value) || /^\d+$/.test(value);
 }
 
 function TabButton({
@@ -141,10 +143,15 @@ export default function Modelagem() {
   const [loadingFollowUps, setLoadingFollowUps] = useState(false);
   const [loadingBusca, setLoadingBusca] = useState(false);
 
+  const [searchTipo, setSearchTipo] = useState<"chave" | "cliente">("chave");
   const [novoCliente, setNovoCliente] = useState("");
   const [searchChave, setSearchChave] = useState("");
+  const [searchClienteNome, setSearchClienteNome] = useState("");
   const [foundGpByChave, setFoundGpByChave] = useState<Gp | null>(null);
   const [foundFollowUps, setFoundFollowUps] = useState<FollowUp[]>([]);
+  const [foundClienteNome, setFoundClienteNome] = useState("");
+  const [foundClienteGps, setFoundClienteGps] = useState<Gp[]>([]);
+  const [foundClienteFollowUps, setFoundClienteFollowUps] = useState<FollowUp[]>([]);
 
   const [gpEditId, setGpEditId] = useState<number | null>(null);
   const [gpForm, setGpForm] = useState<GpForm>(emptyGpForm);
@@ -162,10 +169,12 @@ export default function Modelagem() {
 
   const gpTotalPages = Math.max(1, Math.ceil(gpsTotal / gpPageSize));
   const gpOptions = useMemo(() => {
-    if (!foundGpByChave) return gps;
-    if (gps.some((g) => g.id === foundGpByChave.id)) return gps;
-    return [foundGpByChave, ...gps];
-  }, [gps, foundGpByChave]);
+    const map = new Map<number, Gp>();
+    for (const g of gps) map.set(g.id, g);
+    if (foundGpByChave) map.set(foundGpByChave.id, foundGpByChave);
+    for (const g of foundClienteGps) map.set(g.id, g);
+    return Array.from(map.values());
+  }, [gps, foundGpByChave, foundClienteGps]);
 
   const selectedGp = useMemo(() => gpOptions.find((g) => g.id === selectedGpId) || null, [gpOptions, selectedGpId]);
 
@@ -227,6 +236,27 @@ export default function Modelagem() {
     setFoundFollowUps(data || []);
   }
 
+  async function loadFollowUpsForCliente(gpsItems: Gp[]) {
+    if (!gpsItems.length) {
+      setFoundClienteFollowUps([]);
+      return;
+    }
+
+    const groups = await Promise.all(gpsItems.map((g) => listFollowUps({ gpId: g.id })));
+    const merged = groups.flat();
+    const dedup = new Map<number, FollowUp>();
+    for (const row of merged) dedup.set(row.id, row);
+
+    const ordered = Array.from(dedup.values()).sort((a, b) => {
+      const aTime = a.ultimoContato ? new Date(String(a.ultimoContato)).getTime() : 0;
+      const bTime = b.ultimoContato ? new Date(String(b.ultimoContato)).getTime() : 0;
+      if (aTime !== bTime) return bTime - aTime;
+      return b.id - a.id;
+    });
+
+    setFoundClienteFollowUps(ordered);
+  }
+
   useEffect(() => {
     loadClientes();
   }, []);
@@ -242,7 +272,7 @@ export default function Modelagem() {
   async function handleSearchByChave() {
     const chave = normalizeChave(searchChave);
     if (!isValidChave(chave)) {
-      notify("error", "Validacao", "Informe a chave no formato XXXX-NN.");
+      notify("error", "Validacao", "Informe a chave no formato XXXX-NN ou o N.Ã‚Âº da planilha.");
       return;
     }
 
@@ -254,11 +284,17 @@ export default function Modelagem() {
       if (!exact) {
         setFoundGpByChave(null);
         setFoundFollowUps([]);
+        setFoundClienteNome("");
+        setFoundClienteGps([]);
+        setFoundClienteFollowUps([]);
         notify("info", "Busca", `Nenhum GP encontrado para a chave ${chave}.`);
         return;
       }
 
       setFoundGpByChave(exact);
+      setFoundClienteNome("");
+      setFoundClienteGps([]);
+      setFoundClienteFollowUps([]);
       setSelectedGpId(exact.id);
       setFollowUpForm((prev) => ({ ...prev, gpId: String(exact.id) }));
       await loadFollowUpsForBusca(exact.id);
@@ -270,10 +306,50 @@ export default function Modelagem() {
     }
   }
 
+  async function handleSearchByCliente() {
+    const nome = String(searchClienteNome || "").trim();
+    if (nome.length < 2) {
+      notify("error", "Validacao", "Informe ao menos 2 caracteres do nome do cliente.");
+      return;
+    }
+
+    setLoadingBusca(true);
+    try {
+      const data = await listGps({ clienteNome: nome, page: 1, pageSize: 200 });
+      const items = data.items || [];
+
+      if (!items.length) {
+        setFoundClienteNome("");
+        setFoundClienteGps([]);
+        setFoundClienteFollowUps([]);
+        setFoundGpByChave(null);
+        setFoundFollowUps([]);
+        notify("info", "Busca", `Nenhum GP encontrado para cliente contendo "${nome}".`);
+        return;
+      }
+
+      const clienteNome = items[0]?.cliente?.nome || nome;
+      setFoundClienteNome(clienteNome);
+      setFoundClienteGps(items);
+      setFoundGpByChave(null);
+      setFoundFollowUps([]);
+      await loadFollowUpsForCliente(items);
+      notify("success", "Busca", `${items.length} GP(s) encontrados para ${clienteNome}.`);
+    } catch (e: any) {
+      notify("error", "Erro", e?.message || "Falha ao buscar cliente.");
+    } finally {
+      setLoadingBusca(false);
+    }
+  }
+
   function clearSearchByChave() {
     setSearchChave("");
+    setSearchClienteNome("");
     setFoundGpByChave(null);
     setFoundFollowUps([]);
+    setFoundClienteNome("");
+    setFoundClienteGps([]);
+    setFoundClienteFollowUps([]);
   }
 
   async function handleCreateCliente() {
@@ -300,7 +376,7 @@ export default function Modelagem() {
   async function handleSaveGp() {
     const chave = gpForm.chave.trim().toUpperCase();
     if (!chave) {
-      notify("error", "Validacao", "Informe a chave do GP (formato XXXX-NN).");
+      notify("error", "Validacao", "Informe a chave do GP (XXXX-NN ou N.Ã‚Âº da planilha).");
       return;
     }
 
@@ -350,6 +426,13 @@ export default function Modelagem() {
           setFoundFollowUps([]);
         }
       }
+      if (searchTipo === "cliente" && searchClienteNome.trim().length >= 2) {
+        const clienteAfter = await listGps({ clienteNome: searchClienteNome.trim(), page: 1, pageSize: 200 });
+        const items = clienteAfter.items || [];
+        setFoundClienteGps(items);
+        setFoundClienteNome(items[0]?.cliente?.nome || searchClienteNome.trim());
+        await loadFollowUpsForCliente(items);
+      }
     } catch (e: any) {
       notify("error", "Erro", e?.message || "Falha ao salvar GP.");
     }
@@ -379,6 +462,12 @@ export default function Modelagem() {
       if (foundGpByChave?.id === gp.id) {
         setFoundGpByChave(null);
         setFoundFollowUps([]);
+      }
+      if (foundClienteGps.some((g) => g.id === gp.id)) {
+        const nextGps = foundClienteGps.filter((g) => g.id !== gp.id);
+        setFoundClienteGps(nextGps);
+        setFoundClienteFollowUps((prev) => prev.filter((f) => f.gpId !== gp.id));
+        if (!nextGps.length) setFoundClienteNome("");
       }
       await Promise.all([loadGps(), loadFollowUps(), loadClientes()]);
       notify("success", "GP excluido", "GP removido com sucesso.");
@@ -424,6 +513,9 @@ export default function Modelagem() {
       if (foundGpByChave?.id === gpId) {
         await loadFollowUpsForBusca(gpId);
       }
+      if (foundClienteGps.some((g) => g.id === gpId)) {
+        await loadFollowUpsForCliente(foundClienteGps);
+      }
     } catch (e: any) {
       notify("error", "Erro", e?.message || "Falha ao salvar follow-up.");
     }
@@ -452,6 +544,9 @@ export default function Modelagem() {
       if (foundGpByChave?.id === row.gpId) {
         await loadFollowUpsForBusca(row.gpId);
       }
+      if (foundClienteGps.some((g) => g.id === row.gpId)) {
+        await loadFollowUpsForCliente(foundClienteGps);
+      }
       notify("success", "Follow-up excluido", "Registro removido.");
     } catch (e: any) {
       notify("error", "Erro", e?.message || "Falha ao excluir follow-up.");
@@ -462,31 +557,71 @@ export default function Modelagem() {
     <motion.div className="space-y-6" variants={container} initial="hidden" animate="show">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <motion.div className="card p-5" variants={item}>
-        <div className="text-xs uppercase tracking-wide text-zinc-500">Estrutura</div>
-        <h1 className="text-2xl font-semibold">Modelagem de Dados</h1>
-        <p className="text-sm text-zinc-500">
-          Cadastro e manutencao de Cliente, GP e FollowUp para sua modelagem.
-        </p>
+      <motion.div className="page-hero" variants={item}>
+        <div>
+          <div className="page-kicker">Estrutura</div>
+          <h1 className="page-title inline-flex items-center gap-2">
+            <Database size={22} />
+            Modelagem de Dados
+          </h1>
+          <p className="page-desc">Cadastro e manutencao de Cliente, GP e FollowUp para sua modelagem.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="badge">Clientes: {clientes.length}</span>
+          <span className="badge">GPs: {gpsTotal}</span>
+          <span className="badge">FollowUps: {followUps.length}</span>
+        </div>
       </motion.div>
 
       <motion.div className="grid grid-cols-1 xl:grid-cols-[340px_1fr] gap-4" variants={item}>
-        <div className="card p-4 space-y-3 bg-white/80">
+        <div className="panel-soft space-y-3">
           <div className="text-xs uppercase tracking-wide text-zinc-500">Filtro de busca</div>
-          <div className="text-sm text-zinc-600">Chave: XXXX-NN</div>
-          <input
+          <div className="text-sm text-zinc-600">Escolha o tipo de busca</div>
+          <select
             className="input"
-            value={searchChave}
-            onChange={(e) => setSearchChave(normalizeChave(e.target.value))}
-            placeholder="Ex: ABCD-12"
-            maxLength={7}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") handleSearchByChave();
+            value={searchTipo}
+            onChange={(e) => {
+              setSearchTipo(e.target.value as "chave" | "cliente");
+              setFoundGpByChave(null);
+              setFoundFollowUps([]);
+              setFoundClienteNome("");
+              setFoundClienteGps([]);
+              setFoundClienteFollowUps([]);
             }}
-          />
+          >
+            <option value="chave">Chave GP (XXXX-NN ou N.º)</option>
+            <option value="cliente">Nome do cliente</option>
+          </select>
+          {searchTipo === "chave" ? (
+            <input
+              className="input"
+              value={searchChave}
+              onChange={(e) => setSearchChave(normalizeChave(e.target.value))}
+              placeholder="Ex: ABCD-12 ou 2949"
+              maxLength={20}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSearchByChave();
+              }}
+            />
+          ) : (
+            <input
+              className="input"
+              value={searchClienteNome}
+              onChange={(e) => setSearchClienteNome(e.target.value)}
+              placeholder="Ex: Prefeitura de Sao Paulo"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleSearchByCliente();
+              }}
+            />
+          )}
           <div className="flex gap-2">
-            <button className="btn btn-primary" onClick={handleSearchByChave} type="button" disabled={loadingBusca}>
-              {loadingBusca ? "Buscando..." : "Buscar chave"}
+            <button
+              className="btn btn-primary"
+              onClick={searchTipo === "chave" ? handleSearchByChave : handleSearchByCliente}
+              type="button"
+              disabled={loadingBusca}
+            >
+              {loadingBusca ? "Buscando..." : searchTipo === "chave" ? "Buscar chave" : "Buscar cliente"}
             </button>
             <button className="btn" onClick={clearSearchByChave} type="button" disabled={loadingBusca}>
               Limpar
@@ -497,11 +632,15 @@ export default function Modelagem() {
           </p>
         </div>
 
-        <div className="card p-4 space-y-3 bg-white/80">
+        <div className="panel-soft space-y-3">
           <div className="text-xs uppercase tracking-wide text-zinc-500">Tela de busca personalizada</div>
-          {!foundGpByChave ? (
-            <div className="text-sm text-zinc-600">Busque uma chave para carregar os dados do GP.</div>
-          ) : (
+          {!foundGpByChave && foundClienteGps.length === 0 ? (
+            <EmptyState
+              compact
+              title="Busque por chave GP ou nome do cliente"
+              text="Ao encontrar resultado, o sistema exibe todos os dados relacionados."
+            />
+          ) : foundGpByChave ? (
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
                 <div className="border rounded-xl p-3 bg-white">
@@ -548,7 +687,7 @@ export default function Modelagem() {
                 </button>
               </div>
 
-              <div className="border rounded-2xl overflow-hidden">
+              <div className="table-shell">
                 <div className="overflow-auto" style={{ maxHeight: "240px" }}>
                   <table className="min-w-[760px] w-full text-sm">
                     <thead className="sticky top-0 bg-white z-10 border-b">
@@ -564,7 +703,7 @@ export default function Modelagem() {
                       {foundFollowUps.length === 0 ? (
                         <tr>
                           <td className="py-3 px-3 text-zinc-500" colSpan={5}>
-                            Nenhum follow-up para este GP.
+                            <EmptyState compact title="Nenhum follow-up" text="Este GP ainda nao possui follow-up cadastrado." />
                           </td>
                         </tr>
                       ) : (
@@ -583,11 +722,119 @@ export default function Modelagem() {
                 </div>
               </div>
             </>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                <div className="border rounded-xl p-3 bg-white">
+                  <div className="text-xs text-zinc-500">Cliente</div>
+                  <div className="font-semibold">{foundClienteNome || "-"}</div>
+                  <div className="text-zinc-600">Busca: {searchClienteNome || "-"}</div>
+                </div>
+                <div className="border rounded-xl p-3 bg-white">
+                  <div className="text-xs text-zinc-500">GPs vinculados</div>
+                  <div className="font-semibold">{foundClienteGps.length}</div>
+                  <div className="text-zinc-600">Registros relacionados ao cliente</div>
+                </div>
+                <div className="border rounded-xl p-3 bg-white">
+                  <div className="text-xs text-zinc-500">Follow-Ups</div>
+                  <div className="font-semibold">{foundClienteFollowUps.length}</div>
+                  <div className="text-zinc-600">Total consolidado dos GPs</div>
+                </div>
+              </div>
+
+              <div className="table-shell">
+                <div className="overflow-auto" style={{ maxHeight: "220px" }}>
+                  <table className="min-w-[760px] w-full text-sm">
+                    <thead className="sticky top-0 bg-white z-10 border-b">
+                      <tr>
+                        <th className="text-left py-2 px-3">GP</th>
+                        <th className="text-left py-2 px-3">Grupo</th>
+                        <th className="text-left py-2 px-3">Ano</th>
+                        <th className="text-left py-2 px-3">Follow-Ups</th>
+                        <th className="text-left py-2 px-3">Acoes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {foundClienteGps.map((g) => (
+                        <tr key={g.id} className="border-b transition-colors">
+                          <td className="py-2 px-3 font-medium">{g.chave}</td>
+                          <td className="py-2 px-3">{g.grupo || "-"}</td>
+                          <td className="py-2 px-3">{g.ano ?? "-"}</td>
+                          <td className="py-2 px-3">{g._count?.followUps ?? 0}</td>
+                          <td className="py-2 px-3">
+                            <div className="flex gap-2">
+                              <button
+                                className="btn"
+                                onClick={() => {
+                                  handleEditGp(g);
+                                  setTab("gps");
+                                }}
+                                type="button"
+                              >
+                                Editar GP
+                              </button>
+                              <button
+                                className="btn"
+                                onClick={() => {
+                                  setTab("followups");
+                                  setSelectedGpId(g.id);
+                                  setFollowUpForm((p) => ({ ...p, gpId: String(g.id) }));
+                                }}
+                                type="button"
+                              >
+                                Follow-Ups
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              <div className="table-shell">
+                <div className="overflow-auto" style={{ maxHeight: "220px" }}>
+                  <table className="min-w-[820px] w-full text-sm">
+                    <thead className="sticky top-0 bg-white z-10 border-b">
+                      <tr>
+                        <th className="text-left py-2 px-3">GP</th>
+                        <th className="text-left py-2 px-3">Convite</th>
+                        <th className="text-left py-2 px-3">Entrega</th>
+                        <th className="text-left py-2 px-3">Ultimo contato</th>
+                        <th className="text-left py-2 px-3">Status</th>
+                        <th className="text-left py-2 px-3">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {foundClienteFollowUps.length === 0 ? (
+                        <tr>
+                          <td className="py-3 px-3 text-zinc-500" colSpan={6}>
+                            <EmptyState compact title="Nenhum follow-up" text="Os GPs deste cliente ainda nao possuem follow-up." />
+                          </td>
+                        </tr>
+                      ) : (
+                        foundClienteFollowUps.map((f) => (
+                          <tr key={f.id} className="border-b transition-colors">
+                            <td className="py-2 px-3">{f.gp?.chave || f.gpId}</td>
+                            <td className="py-2 px-3">{fmtDate(f.convite)}</td>
+                            <td className="py-2 px-3">{fmtDate(f.entrega)}</td>
+                            <td className="py-2 px-3">{fmtDate(f.ultimoContato)}</td>
+                            <td className="py-2 px-3">{f.status || "-"}</td>
+                            <td className="py-2 px-3">{fmtCurrency(f.valor)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
           )}
         </div>
       </motion.div>
 
-      <motion.div className="card p-4 flex items-center gap-2 flex-wrap" variants={item}>
+      <motion.div className="panel-soft flex items-center gap-2 flex-wrap" variants={item}>
         <TabButton id="clientes" label="Clientes" activeTab={tab} onClick={setTab} />
         <TabButton id="gps" label="GPs" activeTab={tab} onClick={setTab} />
         <TabButton id="followups" label="FollowUps" activeTab={tab} onClick={setTab} />
@@ -597,7 +844,7 @@ export default function Modelagem() {
       </motion.div>
 
       {tab === "clientes" && (
-        <motion.div className="card p-4 space-y-4 bg-white/80" variants={item}>
+        <motion.div className="panel-soft space-y-4" variants={item}>
           <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
             <input
               className="input"
@@ -610,7 +857,7 @@ export default function Modelagem() {
             </button>
           </div>
 
-          <div className="border rounded-2xl overflow-hidden">
+          <div className="table-shell">
             <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
               <table className="w-full text-sm min-w-[520px]">
                 <thead className="sticky top-0 bg-white z-10 border-b">
@@ -622,15 +869,11 @@ export default function Modelagem() {
                 </thead>
                 <tbody>
                   {loadingClientes ? (
-                    <tr>
-                      <td className="py-4 px-3" colSpan={3}>
-                        Carregando clientes...
-                      </td>
-                    </tr>
+                    <TableSkeletonRows cols={3} rows={5} />
                   ) : clientes.length === 0 ? (
                     <tr>
                       <td className="py-4 px-3" colSpan={3}>
-                        Nenhum cliente cadastrado.
+                        <EmptyState compact title="Nenhum cliente cadastrado" text="Use o formulario acima para adicionar o primeiro cliente." />
                       </td>
                     </tr>
                   ) : (
@@ -651,7 +894,7 @@ export default function Modelagem() {
 
       {tab === "gps" && (
         <motion.div className="space-y-4" variants={item}>
-          <div className="card p-4 space-y-3 bg-white/80">
+          <div className="panel-soft space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <input
                 className="input"
@@ -716,14 +959,14 @@ export default function Modelagem() {
             </div>
           </div>
 
-          <div className="card p-4 space-y-3 bg-white/80">
+          <div className="panel-soft space-y-3">
             <div className="text-sm font-semibold">{gpEditId ? "Editar GP" : "Novo GP"}</div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
               <input
                 className="input"
                 value={gpForm.chave}
                 onChange={(e) => setGpForm((p) => ({ ...p, chave: e.target.value }))}
-                placeholder="Chave (XXXX-NN)"
+                placeholder="Chave (XXXX-NN ou N.Ã‚Âº)"
               />
               <input
                 className="input"
@@ -789,7 +1032,7 @@ export default function Modelagem() {
             </div>
           </div>
 
-          <div className="card overflow-hidden">
+          <div className="table-shell">
             <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
               <table className="min-w-[1200px] w-full text-sm">
                 <thead className="sticky top-0 bg-white z-10 border-b">
@@ -806,20 +1049,16 @@ export default function Modelagem() {
                 </thead>
                 <tbody>
                   {loadingGps ? (
-                    <tr>
-                      <td className="py-4 px-3" colSpan={8}>
-                        Carregando GPs...
-                      </td>
-                    </tr>
+                    <TableSkeletonRows cols={8} rows={6} />
                   ) : gps.length === 0 ? (
                     <tr>
                       <td className="py-4 px-3" colSpan={8}>
-                        Nenhum GP encontrado.
+                        <EmptyState compact title="Nenhum GP encontrado" text="Ajuste os filtros ou crie um novo GP no formulario acima." />
                       </td>
                     </tr>
                   ) : (
                     gps.map((g) => (
-                      <tr key={g.id} className="border-b hover:bg-zinc-50">
+                      <tr key={g.id} className="border-b transition-colors">
                         <td className="py-2 px-3 font-medium">{g.chave}</td>
                         <td className="py-2 px-3">{g.grupo || "-"}</td>
                         <td className="py-2 px-3">{g.ano ?? "-"}</td>
@@ -860,7 +1099,7 @@ export default function Modelagem() {
 
       {tab === "followups" && (
         <motion.div className="space-y-4" variants={item}>
-          <div className="card p-4 space-y-3 bg-white/80">
+          <div className="panel-soft space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <select
                 className="input"
@@ -893,7 +1132,7 @@ export default function Modelagem() {
             </div>
           </div>
 
-          <div className="card p-4 space-y-3 bg-white/80">
+          <div className="panel-soft space-y-3">
             <div className="text-sm font-semibold">{followUpEditId ? "Editar FollowUp" : "Novo FollowUp"}</div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <select
@@ -949,7 +1188,7 @@ export default function Modelagem() {
             </div>
           </div>
 
-          <div className="card overflow-hidden">
+          <div className="table-shell">
             <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
               <table className="min-w-[1200px] w-full text-sm">
                 <thead className="sticky top-0 bg-white z-10 border-b">
@@ -966,20 +1205,16 @@ export default function Modelagem() {
                 </thead>
                 <tbody>
                   {loadingFollowUps ? (
-                    <tr>
-                      <td className="py-4 px-3" colSpan={8}>
-                        Carregando follow-ups...
-                      </td>
-                    </tr>
+                    <TableSkeletonRows cols={8} rows={6} />
                   ) : followUps.length === 0 ? (
                     <tr>
                       <td className="py-4 px-3" colSpan={8}>
-                        Nenhum follow-up encontrado.
+                        <EmptyState compact title="Nenhum follow-up encontrado" text="Crie um novo follow-up para acompanhar este GP." />
                       </td>
                     </tr>
                   ) : (
                     followUps.map((f) => (
-                      <tr key={f.id} className="border-b hover:bg-zinc-50">
+                      <tr key={f.id} className="border-b transition-colors">
                         <td className="py-2 px-3">{f.id}</td>
                         <td className="py-2 px-3">{f.gp?.chave || f.gpId}</td>
                         <td className="py-2 px-3">{fmtDate(f.convite)}</td>

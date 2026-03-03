@@ -227,6 +227,7 @@ export type FollowUp = {
 export type ListGpsParams = {
   chave?: string;
   clienteId?: number;
+  clienteNome?: string;
   grupo?: string;
   ano?: number;
   page?: number;
@@ -276,6 +277,7 @@ export async function listGps(params: ListGpsParams = {}) {
   const qs = new URLSearchParams();
   if (params.chave) qs.set("chave", params.chave);
   if (typeof params.clienteId === "number") qs.set("clienteId", String(params.clienteId));
+  if (params.clienteNome) qs.set("clienteNome", params.clienteNome);
   if (params.grupo) qs.set("grupo", params.grupo);
   if (typeof params.ano === "number") qs.set("ano", String(params.ano));
   if (typeof params.page === "number") qs.set("page", String(params.page));

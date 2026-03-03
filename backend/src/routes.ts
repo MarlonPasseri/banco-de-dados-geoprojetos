@@ -70,7 +70,8 @@ function normalizeGpChave(v: any) {
 }
 
 function isGpChaveValid(chave: string) {
-  return /^[A-Z0-9]{4}-\d{2}$/.test(chave);
+  if (!chave) return false;
+  return /^[A-Z0-9]{4}-\d{2}$/.test(chave) || /^\d+$/.test(chave);
 }
 
 function toBool(v: any, fallback = false) {
@@ -115,6 +116,65 @@ function normalizeClienteNome(v: unknown) {
   return nome;
 }
 
+function normalizeLoose(v: unknown) {
+  return String(v ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function sanitizeGridValue(v: unknown) {
+  const text = String(v ?? "").trim();
+  if (!text || text === "-") return "";
+  return text;
+}
+
+function pickGridValue(data: Record<string, unknown>, candidates: string[]) {
+  for (const key of candidates) {
+    if (!Object.prototype.hasOwnProperty.call(data, key)) continue;
+    const value = sanitizeGridValue(data[key]);
+    if (value) return value;
+  }
+
+  const normalized = new Map<string, unknown>();
+  for (const [key, value] of Object.entries(data)) {
+    normalized.set(normalizeLoose(key), value);
+  }
+
+  for (const key of candidates) {
+    const value = sanitizeGridValue(normalized.get(normalizeLoose(key)));
+    if (value) return value;
+  }
+
+  return "";
+}
+
+function pickNumeroColumnKey(columns: Array<{ key: string; label: string }>) {
+  const aliases = new Set(["n", "numero"]);
+
+  for (const col of columns) {
+    if (aliases.has(normalizeLoose(col.label))) return col.key;
+  }
+  for (const col of columns) {
+    if (aliases.has(normalizeLoose(col.key))) return col.key;
+  }
+
+  return null;
+}
+
+function toIntFromGrid(v: unknown) {
+  const text = sanitizeGridValue(v);
+  if (!text) return null;
+  const normalized = text.replace(/\./g, "").replace(",", ".");
+  const num = Number(normalized);
+  return Number.isFinite(num) ? Math.trunc(num) : null;
+}
+
+const GP_SYNC_INTERVAL_MS = 60_000;
+let lastGpSyncAt = 0;
+let gpSyncInFlight: Promise<void> | null = null;
+
 async function syncClientesFromGrid() {
   const rows = await prisma.$queryRaw<Array<{ nome: string | null }>>(Prisma.sql`
     SELECT DISTINCT TRIM(COALESCE("data"->>'clientes', "data"->>'cliente', '')) AS nome
@@ -147,6 +207,77 @@ async function syncClientesFromGrid() {
 
   if (!toCreate.length) return;
   await prisma.cliente.createMany({ data: toCreate, skipDuplicates: true });
+}
+
+async function syncGpsFromGrid() {
+  const columns = await prisma.gridColumn.findMany({
+    select: { key: true, label: true },
+  });
+  if (!columns.length) return;
+
+  const numeroKey = pickNumeroColumnKey(columns);
+  if (!numeroKey) return;
+
+  const [rows, gpsExistentes, clientes] = await Promise.all([
+    prisma.gridRow.findMany({
+      where: { sheet: "CONTRATOS" },
+      select: { data: true },
+    }),
+    prisma.gp.findMany({ select: { chave: true } }),
+    prisma.cliente.findMany({ select: { id: true, nome: true } }),
+  ]);
+
+  if (!rows.length) return;
+
+  const existing = new Set(gpsExistentes.map((gp) => normalizeGpChave(gp.chave)));
+  const seen = new Set<string>();
+  const clientesMap = new Map(
+    clientes.map((c) => [normalizeClienteNome(c.nome).toLowerCase(), c.id] as const)
+  );
+
+  const toCreate: Prisma.GpCreateManyInput[] = [];
+
+  for (const row of rows) {
+    const data = ((row.data as any) || {}) as Record<string, unknown>;
+    const rawNumero = pickGridValue(data, [numeroKey, "n", "numero"]);
+    const chave = normalizeGpChave(rawNumero);
+    if (!isGpChaveValid(chave)) continue;
+    if (existing.has(chave) || seen.has(chave)) continue;
+
+    const clienteNome = normalizeClienteNome(pickGridValue(data, ["cliente", "clientes"]));
+    const clienteId = clienteNome ? clientesMap.get(clienteNome.toLowerCase()) ?? null : null;
+
+    toCreate.push({
+      chave,
+      grupo: pickGridValue(data, ["grupo"]) || null,
+      ano: toIntFromGrid(pickGridValue(data, ["ano"])),
+      tipoServico: pickGridValue(data, ["tipo_de_servico", "tipo_servico"]) || null,
+      descricao:
+        pickGridValue(data, ["nome_do_projeto_e_local", "nome_do_projeto_local", "descricao"]) || null,
+      clienteId,
+    });
+
+    seen.add(chave);
+  }
+
+  if (!toCreate.length) return;
+  await prisma.gp.createMany({ data: toCreate, skipDuplicates: true });
+}
+
+async function ensureGpsAndClientesSynced() {
+  const now = Date.now();
+  if (now - lastGpSyncAt < GP_SYNC_INTERVAL_MS) return;
+  if (gpSyncInFlight) return gpSyncInFlight;
+
+  gpSyncInFlight = (async () => {
+    await syncClientesFromGrid();
+    await syncGpsFromGrid();
+    lastGpSyncAt = Date.now();
+  })().finally(() => {
+    gpSyncInFlight = null;
+  });
+
+  return gpSyncInFlight;
 }
 
 // -----------------------------
@@ -577,8 +708,15 @@ router.post("/clientes", authMiddleware, async (req, res) => {
 });
 
 router.get("/gps", authMiddleware, async (req, res) => {
+  try {
+    await ensureGpsAndClientesSynced();
+  } catch (error) {
+    console.error("Falha ao sincronizar GPs da planilha:", error);
+  }
+
   const chave = String(req.query.chave ?? "").trim().toUpperCase();
   const clienteId = toIntOrNull(req.query.clienteId);
+  const clienteNome = String(req.query.clienteNome ?? "").trim();
   const grupo = String(req.query.grupo ?? "").trim();
   const ano = toIntOrNull(req.query.ano);
 
@@ -589,6 +727,7 @@ router.get("/gps", authMiddleware, async (req, res) => {
   const where: any = {
     ...(chave ? { chave: { contains: chave, mode: "insensitive" } } : {}),
     ...(clienteId ? { clienteId } : {}),
+    ...(clienteNome ? { cliente: { nome: { contains: clienteNome, mode: "insensitive" } } } : {}),
     ...(grupo ? { grupo: { contains: grupo, mode: "insensitive" } } : {}),
     ...(ano ? { ano } : {}),
   };
@@ -629,7 +768,7 @@ router.get("/gps/:id", authMiddleware, async (req, res) => {
 router.post("/gps", authMiddleware, async (req, res) => {
   const chave = normalizeGpChave(req.body?.chave);
   if (!isGpChaveValid(chave)) {
-    return res.status(400).json({ error: "chave deve seguir o formato XXXX-NN" });
+    return res.status(400).json({ error: "chave deve seguir o formato XXXX-NN ou um numero da planilha" });
   }
 
   const created = await prisma.gp.create({
@@ -657,7 +796,7 @@ router.patch("/gps/:id", authMiddleware, async (req, res) => {
   if (req.body?.chave !== undefined) {
     const chave = normalizeGpChave(req.body.chave);
     if (!isGpChaveValid(chave)) {
-      return res.status(400).json({ error: "chave deve seguir o formato XXXX-NN" });
+      return res.status(400).json({ error: "chave deve seguir o formato XXXX-NN ou um numero da planilha" });
     }
     data.chave = chave;
   }

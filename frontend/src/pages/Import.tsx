@@ -1,7 +1,8 @@
-﻿import { useEffect, useState, type DragEvent } from "react";
+import { useEffect, useState, type DragEvent } from "react";
+import { motion } from "framer-motion";
+import { FileSpreadsheet, RefreshCw, UploadCloud } from "lucide-react";
 import { importGrid, fetchGrid } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
-import { motion } from "framer-motion";
 import { safeUUID } from "../utils/uuid";
 
 export default function ImportPage() {
@@ -39,12 +40,12 @@ export default function ImportPage() {
 
   function handleFile(f: File | null) {
     if (!f) return;
-    if (!f.name.toLowerCase().endsWith('.xlsx')) {
+    if (!f.name.toLowerCase().endsWith(".xlsx")) {
       setToast({
         id: safeUUID(),
-        type: 'error',
-        title: 'Arquivo inválido',
-        text: 'Envie apenas arquivos .xlsx',
+        type: "error",
+        title: "Arquivo invalido",
+        text: "Envie apenas arquivos .xlsx",
       });
       return;
     }
@@ -53,7 +54,7 @@ export default function ImportPage() {
 
   async function onImport() {
     if (!file) {
-      setToast({ id: safeUUID(), type: 'error', title: 'Faltou o arquivo', text: 'Selecione um .xlsx' });
+      setToast({ id: safeUUID(), type: "error", title: "Faltou o arquivo", text: "Selecione um .xlsx" });
       return;
     }
 
@@ -67,8 +68,8 @@ export default function ImportPage() {
       const r = await importGrid(file, sheet, mode);
       setToast({
         id: safeUUID(),
-        type: 'success',
-        title: 'Importação concluída',
+        type: "success",
+        title: "Importacao concluida",
         text: `Colunas: ${r.colunas} • Linhas: ${r.linhas}`,
       });
       await loadSummary();
@@ -76,9 +77,9 @@ export default function ImportPage() {
     } catch (e: any) {
       setToast({
         id: safeUUID(),
-        type: 'error',
-        title: 'Erro ao importar',
-        text: e?.message || 'Falha ao importar',
+        type: "error",
+        title: "Erro ao importar",
+        text: e?.message || "Falha ao importar",
       });
     } finally {
       clearInterval(timer);
@@ -100,45 +101,58 @@ export default function ImportPage() {
     <motion.div className="space-y-6" variants={container} initial="hidden" animate="show">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <motion.div
-        className="card p-5 flex items-end justify-between gap-3"
-        variants={item}
-      >
+      <motion.div className="page-hero" variants={item}>
         <div>
-          <div className="text-xs uppercase tracking-wide text-zinc-500">Carga</div>
-          <h1 className="text-2xl font-semibold heading">Importar Excel</h1>
-          <p className="text-sm text-zinc-500">
-            Importe a aba do Excel para ficar salva no banco. Depois é só consultar e editar.
-          </p>
+          <div className="page-kicker">Carga</div>
+          <h1 className="page-title inline-flex items-center gap-2">
+            <UploadCloud size={22} />
+            Importar Excel
+          </h1>
+          <p className="page-desc">Importe planilhas para manter os dados atualizados no banco.</p>
         </div>
 
-        {summary && (
-          <div className="card px-4 py-3">
-            <div className="text-xs text-zinc-500">Status atual</div>
-            <div className="text-sm flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
+          {summary ? (
+            <>
               <span className="badge">Linhas: {summary.rows}</span>
               <span className="badge">Colunas: {summary.columns}</span>
-              <span className="badge">Aba: {sheet}</span>
-            </div>
-          </div>
-        )}
+            </>
+          ) : (
+            <span className="badge">Resumo indisponivel</span>
+          )}
+          <span className="badge">Aba: {sheet}</span>
+        </div>
       </motion.div>
 
-      <motion.div
-        className="card p-5 space-y-4 bg-white/80"
-        variants={item}
-      >
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div className="space-y-1">
-            <label className="text-sm text-zinc-600">Aba</label>
-            <input className="input" value={sheet} onChange={(e) => setSheet(e.target.value)} />
+      <motion.div className="panel-soft space-y-4" variants={item}>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-[280px_1fr]">
+          <div className="space-y-3">
+            <div className="space-y-1">
+              <label className="text-sm text-zinc-600">Aba</label>
+              <input className="input" value={sheet} onChange={(e) => setSheet(e.target.value)} />
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-sm text-zinc-600">Modo de importacao</div>
+              <div className="grid grid-cols-2 gap-2">
+                <button className={`btn ${mode === "merge" ? "btn-primary" : ""}`} onClick={() => setMode("merge")}>
+                  Merge
+                </button>
+                <button className={`btn ${mode === "replace" ? "btn-primary" : ""}`} onClick={() => setMode("replace")}>
+                  Replace
+                </button>
+              </div>
+            </div>
+
+            <div className="text-xs text-zinc-500">
+              Merge atualiza linhas existentes. Replace substitui os dados da aba selecionada.
+            </div>
           </div>
 
-          <div className="space-y-1">
-            <label className="text-sm text-zinc-600">Arquivo (.xlsx)</label>
+          <div className="space-y-3">
             <label
-              className={`border-2 border-dashed rounded-2xl px-4 py-6 text-sm text-center cursor-pointer transition-all ${
-                isDragging ? 'border-zinc-900 bg-zinc-900/5' : 'border-zinc-200 bg-white'
+              className={`block cursor-pointer rounded-2xl border-2 border-dashed px-4 py-8 text-center transition-all ${
+                isDragging ? "border-sky-400 bg-sky-50" : "border-zinc-200 bg-white"
               }`}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -147,52 +161,47 @@ export default function ImportPage() {
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
             >
-              <input
-                className="hidden"
-                type="file"
-                accept=".xlsx"
-                onChange={(e) => handleFile(e.target.files?.[0] || null)}
-              />
-              <div className="font-medium">Arraste um .xlsx aqui</div>
-              <div className="text-xs text-zinc-500 mt-1">
-                ou clique para selecionar (aba atual: <b>{sheet}</b>)
+              <input className="hidden" type="file" accept=".xlsx" onChange={(e) => handleFile(e.target.files?.[0] || null)} />
+              <div className="mx-auto mb-2 inline-flex rounded-xl bg-zinc-100 p-2 text-zinc-700">
+                <FileSpreadsheet size={18} />
               </div>
+              <div className="text-sm font-semibold text-zinc-800">Arraste um arquivo .xlsx ou clique para selecionar</div>
+              <div className="mt-1 text-xs text-zinc-500">A importacao sera aplicada na aba: {sheet}</div>
               {file && (
-                <div className="mt-2 text-xs text-zinc-600 bg-zinc-100 rounded-xl px-2 py-1 inline-flex items-center gap-2">
+                <div className="mt-3 inline-flex items-center gap-2 rounded-xl bg-zinc-100 px-3 py-1 text-xs text-zinc-700">
                   <span className="h-2 w-2 rounded-full bg-emerald-500" />
                   {file.name}
                 </div>
               )}
             </label>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-zinc-600">Modo:</span>
-          <button className={`btn ${mode === 'merge' ? 'btn-primary' : ''}`} onClick={() => setMode('merge')}>
-            Atualizar (merge)
-          </button>
-          <button className={`btn ${mode === 'replace' ? 'btn-primary' : ''}`} onClick={() => setMode('replace')}>
-            Substituir (replace)
-          </button>
-        </div>
-
-        <div className="flex items-center gap-3 flex-wrap">
-          <button className="btn btn-primary" onClick={onImport} disabled={loading || !file}>
-            {loading ? 'Importando...' : 'Importar'}
-          </button>
-          {progress > 0 && (
-            <div className="flex-1 h-2 rounded-full bg-zinc-100 overflow-hidden max-w-xs min-w-[180px]">
-              <div
-                className="h-full bg-zinc-900 transition-all"
-                style={{ width: `${progress}%` }}
-                aria-valuenow={progress}
-              />
+            <div className="flex flex-wrap items-center gap-3">
+              <button className="btn btn-primary" onClick={onImport} disabled={loading || !file}>
+                {loading ? (
+                  <>
+                    <RefreshCw size={14} className="animate-spin" />
+                    Importando...
+                  </>
+                ) : (
+                  "Importar"
+                )}
+              </button>
+              <button className="btn" onClick={loadSummary} disabled={loading}>
+                <RefreshCw size={14} />
+                Atualizar resumo
+              </button>
             </div>
-          )}
-          <p className="text-xs text-zinc-500">
-            Dica: você só precisa importar quando quiser atualizar os dados.
-          </p>
+
+            {progress > 0 && (
+              <div className="h-2 max-w-sm overflow-hidden rounded-full bg-zinc-100">
+                <div
+                  className="h-full progress-fill transition-all"
+                  style={{ width: `${progress}%` }}
+                  aria-valuenow={progress}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </motion.div>
     </motion.div>
