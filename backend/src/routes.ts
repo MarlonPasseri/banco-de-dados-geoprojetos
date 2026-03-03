@@ -107,6 +107,48 @@ function toBigIntOrNull(v: any) {
   return /^\d+$/.test(s) ? BigInt(s) : null;
 }
 
+function normalizeClienteNome(v: unknown) {
+  const nome = String(v ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!nome || nome === "-") return "";
+  return nome;
+}
+
+async function syncClientesFromGrid() {
+  const rows = await prisma.$queryRaw<Array<{ nome: string | null }>>(Prisma.sql`
+    SELECT DISTINCT TRIM(COALESCE("data"->>'clientes', "data"->>'cliente', '')) AS nome
+    FROM "GridRow"
+    WHERE TRIM(COALESCE("data"->>'clientes', "data"->>'cliente', '')) <> ''
+      AND TRIM(COALESCE("data"->>'clientes', "data"->>'cliente', '')) <> '-'
+  `);
+
+  if (!rows.length) return;
+
+  const nomesFromGrid = new Map<string, string>();
+  for (const row of rows) {
+    const nome = normalizeClienteNome(row?.nome);
+    if (!nome) continue;
+    const key = nome.toLowerCase();
+    if (!nomesFromGrid.has(key)) nomesFromGrid.set(key, nome);
+  }
+  if (!nomesFromGrid.size) return;
+
+  const existentes = await prisma.cliente.findMany({ select: { nome: true } });
+  const existentesSet = new Set(
+    existentes
+      .map((c) => normalizeClienteNome(c.nome).toLowerCase())
+      .filter((nome) => nome.length > 0)
+  );
+
+  const toCreate = Array.from(nomesFromGrid.entries())
+    .filter(([key]) => !existentesSet.has(key))
+    .map(([, nome]) => ({ nome }));
+
+  if (!toCreate.length) return;
+  await prisma.cliente.createMany({ data: toCreate, skipDuplicates: true });
+}
+
 // -----------------------------
 // AUTH
 // -----------------------------
@@ -513,6 +555,12 @@ router.post("/import/grid", authMiddleware, upload.single("file"), async (req, r
 // -----------------------------
 
 router.get("/clientes", authMiddleware, async (_req, res) => {
+  try {
+    await syncClientesFromGrid();
+  } catch (error) {
+    console.error("Falha ao sincronizar clientes da planilha:", error);
+  }
+
   const clientes = await prisma.cliente.findMany({
     orderBy: { nome: "asc" },
     include: { _count: { select: { gps: true } } },
