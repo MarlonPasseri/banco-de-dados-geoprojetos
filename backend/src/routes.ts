@@ -1,13 +1,44 @@
 // backend/src/routes.ts
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import bcrypt from "bcryptjs";
 import multer from "multer";
+import { timingSafeEqual } from "node:crypto";
 import { Prisma } from "@prisma/client";
 import { prisma } from "./db.js";
 import { signToken, authMiddleware } from "./auth.js";
 import { parseContratosSheet, parseSheetToGrid } from "./importExcel.js";
+import { env } from "./config.js";
+import { createRateLimiter } from "./rateLimit.js";
 
-export const router = Router();
+function wrapMaybeAsync(handler: any) {
+  if (typeof handler !== "function" || handler.length >= 4) return handler;
+
+  return (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const maybePromise = handler(req, res, next);
+      if (maybePromise && typeof maybePromise.then === "function") {
+        void Promise.resolve(maybePromise).catch(next);
+      }
+    } catch (error) {
+      next(error);
+    }
+  };
+}
+
+function createSafeRouter() {
+  const safeRouter = Router();
+  const methods = ["get", "post", "put", "patch", "delete", "head", "options", "all"] as const;
+
+  for (const method of methods) {
+    const original = (safeRouter as any)[method].bind(safeRouter);
+    (safeRouter as any)[method] = (path: string, ...handlers: any[]) =>
+      original(path, ...handlers.map(wrapMaybeAsync));
+  }
+
+  return safeRouter;
+}
+
+export const router = createSafeRouter();
 
 /**
  * Segurança básica pro upload (principalmente por causa do xlsx):
@@ -27,6 +58,32 @@ const upload = multer({
       cb(new Error("Apenas arquivos .xlsx sao permitidos."));
     }
   },
+});
+
+const loginLimiter = createRateLimiter({
+  keyPrefix: "login",
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: "Muitas tentativas de login. Tente novamente em alguns minutos.",
+  keyGenerator: (req) => {
+    const username = String(req.body?.username ?? "").trim().toLowerCase();
+    return `${req.ip || "unknown"}:${username}`;
+  },
+});
+
+const setupLimiter = createRateLimiter({
+  keyPrefix: "setup",
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  message: "Muitas tentativas de setup. Aguarde e tente novamente.",
+});
+
+const importLimiter = createRateLimiter({
+  keyPrefix: "import",
+  windowMs: 10 * 60 * 1000,
+  max: 8,
+  message: "Muitas importacoes em pouco tempo. Aguarde antes de tentar novamente.",
+  keyGenerator: (req) => `${req.ip || "unknown"}:${(req as any).user?.sub ?? "anon"}`,
 });
 
 router.get("/health", (_req, res) => res.json({ ok: true }));
@@ -171,6 +228,13 @@ function toIntFromGrid(v: unknown) {
   return Number.isFinite(num) ? Math.trunc(num) : null;
 }
 
+function safeTokenEquals(expected: string, provided: string) {
+  const expectedBuffer = Buffer.from(expected);
+  const providedBuffer = Buffer.from(provided);
+  if (expectedBuffer.length !== providedBuffer.length) return false;
+  return timingSafeEqual(expectedBuffer, providedBuffer);
+}
+
 const GP_SYNC_INTERVAL_MS = 60_000;
 let lastGpSyncAt = 0;
 let gpSyncInFlight: Promise<void> | null = null;
@@ -283,15 +347,20 @@ async function ensureGpsAndClientesSynced() {
 // -----------------------------
 // AUTH
 // -----------------------------
-router.post("/setup", async (req, res) => {
-  const setupToken = process.env.SETUP_TOKEN;
-  if (setupToken) {
-    const provided = String(req.headers["x-setup-token"] ?? req.query.token ?? "").trim();
-    if (provided !== setupToken) return res.status(403).json({ error: "setup bloqueado" });
+router.post("/setup", setupLimiter, async (req, res) => {
+  if (env.nodeEnv !== "development") {
+    return res.status(403).json({ error: "setup bloqueado fora de development" });
   }
 
-  const username = process.env.ADMIN_USER || "admin";
-  const pass = process.env.ADMIN_PASS || "admin123";
+  if (env.setupToken) {
+    const provided = String(req.headers["x-setup-token"] ?? req.query.token ?? "").trim();
+    if (!safeTokenEquals(env.setupToken, provided)) {
+      return res.status(403).json({ error: "setup bloqueado" });
+    }
+  }
+
+  const username = env.adminUser;
+  const pass = env.adminPass;
 
   const exists = await prisma.user.findUnique({ where: { username } });
   if (!exists) {
@@ -302,24 +371,33 @@ router.post("/setup", async (req, res) => {
   res.json({ ok: true });
 });
 
-router.post("/auth/login", async (req, res) => {
-  const { username, password } = req.body ?? {};
-  if (!username || !password) return res.status(400).json({ error: "Credenciais inválidas" });
+router.post("/auth/login", loginLimiter, async (req, res) => {
+  const username = String(req.body?.username ?? "").trim();
+  const password = String(req.body?.password ?? "");
+
+  if (!username || !password) {
+    return res.status(400).json({ error: "Credenciais invalidas" });
+  }
+
+  if (username.length > 80 || password.length > 256) {
+    return res.status(400).json({ error: "Credenciais invalidas" });
+  }
 
   const u = await prisma.user.findUnique({ where: { username } });
-  if (!u) return res.status(401).json({ error: "Usuário/senha inválidos" });
+  if (!u) return res.status(401).json({ error: "Usuario/senha invalidos" });
 
   const ok = await bcrypt.compare(password, u.password);
-  if (!ok) return res.status(401).json({ error: "Usuário/senha inválidos" });
+  if (!ok) return res.status(401).json({ error: "Usuario/senha invalidos" });
 
   const token = signToken({ sub: u.id, username: u.username });
   res.json({ token });
 });
 
+
 // -----------------------------
 // IMPORT CONTRATOS (schema fixo)
 // -----------------------------
-router.post("/import/contratos", authMiddleware, upload.single("file"), async (req, res) => {
+router.post("/import/contratos", authMiddleware, importLimiter, upload.single("file"), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: "Envie um arquivo .xlsx" });
 
   const contratos = parseContratosSheet(req.file.buffer);
@@ -616,7 +694,7 @@ router.delete("/grid/columns/:key", authMiddleware, async (req, res) => {
 
 // import excel para GRID (cria colunas e linhas)
 // body: sheet=CONTRATOS (ou qualquer aba), mode=merge|replace
-router.post("/import/grid", authMiddleware, upload.single("file"), async (req, res) => {
+router.post("/import/grid", authMiddleware, importLimiter, upload.single("file"), async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ error: "Envie um arquivo .xlsx" });
 
