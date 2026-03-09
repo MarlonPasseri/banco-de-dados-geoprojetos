@@ -38,8 +38,13 @@ function isDevLanOrigin(origin: string) {
     const url = new URL(origin);
     if (url.protocol !== "http:" && url.protocol !== "https:") return false;
 
-    const allowedPorts = new Set(["5173", "4173"]);
-    if (!allowedPorts.has(url.port)) return false;
+    const port = Number(url.port);
+    if (!Number.isInteger(port)) return false;
+
+    const isViteDevPort =
+      (port >= 5173 && port <= 5183) ||
+      (port >= 4173 && port <= 4183);
+    if (!isViteDevPort) return false;
 
     if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return true;
     return isPrivateIpv4(url.hostname);

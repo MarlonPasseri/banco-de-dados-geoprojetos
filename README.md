@@ -80,3 +80,31 @@ Para subir schema sem risco de reset de dados, use:
 - `npx prisma migrate deploy`
 
 Evite `prisma migrate dev` fora do ambiente de desenvolvimento.
+
+## Power BI
+
+### Preparar views para relatorio
+- PowerShell: `./scripts/powerbi-setup.ps1`
+- Bash: `./scripts/powerbi-setup.sh`
+
+Isso cria a schema `bi` com views prontas para consumo:
+- `bi.contratos`
+- `bi.parcelas`
+- `bi.gps`
+- `bi.followups`
+- `bi.clientes`
+
+### Criar usuario somente leitura para o Power BI
+- PowerShell: `./scripts/powerbi-setup.ps1 -BiPassword "SUA_SENHA_FORTE"`
+- Bash: `./scripts/powerbi-setup.sh powerbi_reader "SUA_SENHA_FORTE"`
+
+### Conectar no Power BI Desktop
+- Conector: `PostgreSQL`
+- Servidor: `localhost:5433`
+- Banco: `contratos`
+- Usuario: `powerbi_reader` (ou `postgres`, se optar por nao criar usuario dedicado)
+
+Escolha as views da schema `bi` no navegador do Power BI para montar os relatorios.
+
+### Publicacao no Power BI Service
+- Como o banco roda local/Docker, a atualizacao agendada exige `On-premises Data Gateway`.
