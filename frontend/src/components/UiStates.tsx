@@ -10,10 +10,10 @@ type EmptyStateProps = {
 export function EmptyState({ title, text, Icon = Sparkles, compact = false }: EmptyStateProps) {
   return (
     <div className={`empty-state ${compact ? "py-5" : "py-8"}`}>
-      <div className="mx-auto mb-2 inline-flex rounded-xl bg-zinc-100 p-2 text-zinc-600">
+      <div className="mx-auto mb-2 inline-flex rounded-xl bg-zinc-100 p-2 text-zinc-700">
         <Icon size={16} />
       </div>
-      <div className="text-sm font-semibold text-zinc-700">{title}</div>
+      <div className="text-sm font-semibold text-zinc-800">{title}</div>
       {text ? <div className="mx-auto mt-1 max-w-[56ch] text-xs text-zinc-500">{text}</div> : null}
     </div>
   );

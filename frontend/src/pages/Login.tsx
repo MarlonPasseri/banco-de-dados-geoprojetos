@@ -2,9 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { login, setupAdmin } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Database, Eye, EyeOff, Lock, ShieldCheck, Sparkles, User } from "lucide-react";
+import { ArrowRight, Database, Eye, EyeOff, Lock, MoonStar, ShieldCheck, Sparkles, SunMedium, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { safeUUID } from "../utils/uuid";
+import { useTheme } from "../components/ThemeProvider";
 
 const highlights = [
   {
@@ -26,6 +27,7 @@ const highlights = [
 
 export default function Login() {
   const nav = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
 
   const [username, setUsername] = useState("admin");
   const [password, setPassword] = useState("admin123");
@@ -90,13 +92,25 @@ export default function Login() {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-[linear-gradient(125deg,#f8fafc_0%,#f0f4ff_45%,#f8fbff_100%)]">
+    <div className="login-shell relative min-h-screen overflow-hidden">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-[-180px] top-[-140px] h-[520px] w-[520px] rounded-full bg-sky-200/50 blur-3xl" />
         <div className="absolute right-[-160px] bottom-[-160px] h-[520px] w-[520px] rounded-full bg-amber-200/40 blur-3xl" />
         <div className="absolute inset-0 opacity-30 [background:linear-gradient(to_right,rgba(15,23,42,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.05)_1px,transparent_1px)] [background-size:34px_34px]" />
+      </div>
+
+      <div className="absolute right-5 top-5 z-20 sm:right-8 sm:top-8">
+        <button
+          className="theme-toggle"
+          onClick={toggleTheme}
+          title={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
+          aria-label={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
+        >
+          <span className="theme-toggle-icon">{isDark ? <SunMedium size={16} /> : <MoonStar size={16} />}</span>
+          <span className="theme-toggle-copy">{isDark ? "Modo claro" : "Modo escuro"}</span>
+        </button>
       </div>
 
       <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center px-5 py-10 sm:px-8">
@@ -119,7 +133,7 @@ export default function Login() {
             </div>
 
             <div className="relative">
-              <div className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-zinc-900 font-semibold">
+              <div className="login-mark">
                 GP
               </div>
               <h1 className="mt-7 heading text-3xl font-semibold leading-tight">

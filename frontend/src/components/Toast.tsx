@@ -11,20 +11,6 @@ export function Toast({
   toast: ToastMsg | null;
   onClose: () => void;
 }) {
-  const style =
-    toast?.type === "success"
-      ? "border-emerald-300 bg-white"
-      : toast?.type === "error"
-      ? "border-red-300 bg-white"
-      : "border-zinc-200 bg-white";
-
-  const accent =
-    toast?.type === "success"
-      ? "bg-emerald-100"
-      : toast?.type === "error"
-      ? "bg-red-100"
-      : "bg-zinc-100";
-
   const Icon = toast?.type === "success" ? CheckCircle2 : toast?.type === "error" ? XCircle : Info;
 
   return (
@@ -35,20 +21,21 @@ export function Toast({
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -8, scale: 0.98 }}
           transition={{ duration: 0.18 }}
-          className={`fixed right-4 top-4 z-50 w-[360px] max-w-[92vw] ${style} border rounded-2xl shadow-lg`}
+          className="toast-shell fixed right-4 top-4 z-50 w-[360px] max-w-[92vw]"
+          data-type={toast.type}
         >
           <div className="p-4 flex items-start gap-3">
-            <div className={`h-8 w-8 rounded-xl ${accent} text-zinc-900 grid place-items-center flex-shrink-0`}>
+            <div className="toast-icon flex-shrink-0">
               <Icon size={16} />
             </div>
 
             <div className="flex-1">
-              {toast.title && <p className="text-sm font-semibold text-zinc-900">{toast.title}</p>}
-              <p className="text-sm text-zinc-700">{toast.text}</p>
+              {toast.title && <p className="toast-title text-sm font-semibold">{toast.title}</p>}
+              <p className="toast-text text-sm">{toast.text}</p>
             </div>
 
             <button
-              className="text-zinc-500 hover:text-zinc-900 transition-colors"
+              className="toast-close transition-colors"
               onClick={onClose}
               aria-label="Fechar"
             >

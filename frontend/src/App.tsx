@@ -1,3 +1,4 @@
+import { type ReactNode } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
 import Login from "./pages/Login";
@@ -8,13 +9,14 @@ import AppLayout from "./components/AppLayout";
 import Insersao from "./pages/Insersao";
 import Edicao from "./pages/Edicao";
 import Modelagem from "./pages/Modelagem";
+import { ThemeProvider } from "./components/ThemeProvider";
 
 
 function isAuthed() {
   return !!localStorage.getItem("token");
 }
 
-function PrivateRoute({ children }: { children: React.ReactNode }) {
+function PrivateRoute({ children }: { children: ReactNode }) {
   if (!isAuthed()) return <Navigate to="/login" replace />;
   return <AppLayout>{children}</AppLayout>;
 }
@@ -41,8 +43,10 @@ function AnimatedRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AnimatedRoutes />
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <AnimatedRoutes />
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }

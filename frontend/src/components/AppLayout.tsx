@@ -1,7 +1,9 @@
+import { type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Activity, Database, FileEdit, LayoutGrid, LogOut, PlusSquare, Search, Upload } from "lucide-react";
+import { Activity, Database, FileEdit, LayoutGrid, LogOut, MoonStar, PlusSquare, Search, SunMedium, Upload } from "lucide-react";
 import { clearToken } from "../api";
+import { useTheme } from "./ThemeProvider";
 
 function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) {
   const { pathname } = useLocation();
@@ -15,9 +17,11 @@ function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) 
   );
 }
 
-export default function AppLayout({ children }: { children: React.ReactNode }) {
+export default function AppLayout({ children }: { children: ReactNode }) {
+  const { isDark, toggleTheme } = useTheme();
+
   return (
-    <div className="relative min-h-screen overflow-hidden">
+    <div className="app-shell relative min-h-screen overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-[-140px] top-[-120px] h-[500px] w-[500px] rounded-full bg-sky-200/35 blur-3xl" />
         <div className="absolute bottom-[-180px] right-[-140px] h-[520px] w-[520px] rounded-full bg-amber-200/30 blur-3xl" />
@@ -27,7 +31,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="mx-auto max-w-[1480px] px-4 py-3 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-2xl bg-zinc-900 font-semibold text-white shadow-md">
+              <div className="brand-mark">
                 GP
               </div>
               <div className="leading-tight">
@@ -37,6 +41,15 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                className="theme-toggle"
+                onClick={toggleTheme}
+                title={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
+                aria-label={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
+              >
+                <span className="theme-toggle-icon">{isDark ? <SunMedium size={16} /> : <MoonStar size={16} />}</span>
+                <span className="theme-toggle-copy hidden sm:inline">{isDark ? "Modo claro" : "Modo escuro"}</span>
+              </button>
               <span className="badge hidden sm:inline-flex">
                 <Activity size={13} className="mr-1.5" />
                 Sessao ativa
@@ -55,7 +68,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <nav className="mt-3 flex items-center gap-1 overflow-x-auto pb-1">
+          <nav className="nav-strip mt-3 flex items-center gap-1 overflow-x-auto pb-1">
             <NavItem to="/" label="Dashboard" Icon={LayoutGrid} />
             <NavItem to="/consultas" label="Consultas" Icon={Search} />
             <NavItem to="/modelagem" label="Modelagem" Icon={Database} />
