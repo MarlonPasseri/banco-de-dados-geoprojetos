@@ -1,9 +1,22 @@
-import { type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Activity, Database, FileEdit, LayoutGrid, LogOut, MoonStar, PlusSquare, Search, SunMedium, Upload } from "lucide-react";
-import { clearToken } from "../api";
+import { Activity, CircleUserRound, Database, FileEdit, LayoutGrid, LogOut, MoonStar, PlusSquare, Search, SunMedium, Upload } from "lucide-react";
+import { clearToken, fetchCurrentUser, getStoredUser, getToken, subscribeAuthUserChange, type AuthUser } from "../api";
 import { useTheme } from "./ThemeProvider";
+
+function getUserInitials(user: AuthUser | null) {
+  const source = String(user?.name || user?.email || user?.username || "").trim();
+  if (!source) return "";
+
+  const parts = source
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2);
+
+  if (!parts.length) return source.slice(0, 1).toUpperCase();
+  return parts.map((part) => part.slice(0, 1).toUpperCase()).join("");
+}
 
 function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) {
   const { pathname } = useLocation();
@@ -19,6 +32,35 @@ function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) 
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { isDark, toggleTheme } = useTheme();
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredUser());
+
+  useEffect(() => {
+    let active = true;
+
+    const syncStoredUser = () => {
+      if (!active) return;
+      setCurrentUser(getStoredUser());
+    };
+
+    syncStoredUser();
+    const unsubscribe = subscribeAuthUserChange(syncStoredUser);
+
+    if (getToken()) {
+      void fetchCurrentUser()
+        .then((user) => {
+          if (!active) return;
+          setCurrentUser(user);
+        })
+        .catch(() => undefined);
+    }
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, []);
+
+  const initials = getUserInitials(currentUser);
 
   return (
     <div className="app-shell relative min-h-screen overflow-hidden">
@@ -31,9 +73,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <div className="mx-auto max-w-[1480px] px-4 py-3 sm:px-6">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <div className="brand-mark">
-                GP
-              </div>
+              <div className="brand-mark">GP</div>
               <div className="leading-tight">
                 <div className="heading text-lg font-semibold">Banco de Dados</div>
                 <div className="text-xs text-zinc-500">GeoProjetos - Painel Interno</div>
@@ -54,6 +94,20 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <Activity size={13} className="mr-1.5" />
                 Sessao ativa
               </span>
+              <Link
+                to="/usuario"
+                className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-900 text-sm font-semibold text-white shadow-sm transition hover:border-zinc-300"
+                title="Abrir perfil"
+                aria-label="Abrir perfil"
+              >
+                {currentUser?.avatarUrl ? (
+                  <img src={currentUser.avatarUrl} alt="Foto do usuario" className="h-full w-full object-cover" />
+                ) : initials ? (
+                  <span>{initials}</span>
+                ) : (
+                  <CircleUserRound size={16} />
+                )}
+              </Link>
               <button
                 className="btn"
                 onClick={() => {
@@ -75,6 +129,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
             <NavItem to="/insersao" label="Insercao" Icon={PlusSquare} />
             <NavItem to="/edicao" label="Edicao" Icon={FileEdit} />
             <NavItem to="/import" label="Importar" Icon={Upload} />
+            <NavItem to="/usuario" label="Usuario" Icon={CircleUserRound} />
           </nav>
         </div>
       </header>

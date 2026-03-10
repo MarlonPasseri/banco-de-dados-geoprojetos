@@ -110,6 +110,8 @@ router.get("/", (_req, res) => {
       "/api/setup",
       "/api/auth/register",
       "/api/auth/login",
+      "/api/auth/me",
+      "/api/auth/change-password",
       "/api/clientes",
       "/api/gps",
       "/api/followups",
@@ -212,6 +214,34 @@ async function findUserByLoginIdentifier(identifier: string) {
       ],
     },
   });
+}
+
+function getAuthUserId(req: Request) {
+  const raw = (req as any).user?.sub;
+  const id = Number(raw);
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+function toAuthUserResponse(user: {
+  id: number;
+  username: string | null;
+  email: string | null;
+  name: string | null;
+  avatarUrl: string | null;
+  emailVerifiedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  return {
+    id: user.id,
+    username: user.username,
+    email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
+    emailVerified: Boolean(user.emailVerifiedAt),
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
 }
 
 function sanitizeGridValue(v: unknown) {
@@ -491,14 +521,137 @@ router.post("/auth/login", loginLimiter, async (req, res) => {
   });
   res.json({
     token,
-    user: {
-      id: u.id,
-      username: u.username,
-      email: u.email,
-      name: u.name,
-      emailVerified: Boolean(u.emailVerifiedAt),
+    user: toAuthUserResponse(u),
+  });
+});
+
+router.get("/auth/me", authMiddleware, async (req, res) => {
+  const userId = getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Token invalido" });
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      name: true,
+      avatarUrl: true,
+      emailVerifiedAt: true,
+      createdAt: true,
+      updatedAt: true,
     },
   });
+
+  if (!user) return res.status(404).json({ error: "Usuario nao encontrado." });
+  res.json(toAuthUserResponse(user));
+});
+
+router.patch("/auth/me", authMiddleware, async (req, res) => {
+  const userId = getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Token invalido" });
+
+  const name = req.body?.name === undefined ? undefined : String(req.body?.name ?? "").replace(/\s+/g, " ").trim();
+  const email = req.body?.email === undefined ? undefined : normalizeEmail(req.body?.email);
+  const avatarUrl =
+    req.body?.avatarUrl === undefined ? undefined : String(req.body?.avatarUrl ?? "").trim();
+
+  if (name !== undefined && name.length > 120) {
+    return res.status(400).json({ error: "Nome invalido." });
+  }
+
+  if (email !== undefined && email && !isValidEmail(email)) {
+    return res.status(400).json({ error: "Informe um e-mail valido." });
+  }
+
+  if (avatarUrl !== undefined) {
+    const normalizedAvatar = avatarUrl.trim();
+    if (normalizedAvatar && !normalizedAvatar.startsWith("data:image/")) {
+      return res.status(400).json({ error: "Formato de foto invalido." });
+    }
+    if (normalizedAvatar.length > 900_000) {
+      return res.status(400).json({ error: "A foto esta muito grande. Use uma imagem menor." });
+    }
+  }
+
+  const current = await prisma.user.findUnique({ where: { id: userId } });
+  if (!current) return res.status(404).json({ error: "Usuario nao encontrado." });
+
+  if (email && email !== current.email) {
+    const existing = await prisma.user.findFirst({
+      where: {
+        email,
+        id: { not: userId },
+      },
+    });
+    if (existing) return res.status(409).json({ error: "Este e-mail ja esta em uso." });
+  }
+
+  const updated = await prisma.user.update({
+    where: { id: userId },
+    data: {
+      ...(name !== undefined ? { name: name || null } : {}),
+      ...(email !== undefined ? { email: email || null } : {}),
+      ...(avatarUrl !== undefined ? { avatarUrl: avatarUrl || null } : {}),
+    },
+    select: {
+      id: true,
+      username: true,
+      email: true,
+      name: true,
+      avatarUrl: true,
+      emailVerifiedAt: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+
+  const token = signToken({
+    sub: updated.id,
+    username: updated.username,
+    email: updated.email,
+    name: updated.name,
+  });
+
+  res.json({
+    user: toAuthUserResponse(updated),
+    token,
+  });
+});
+
+router.post("/auth/change-password", authMiddleware, async (req, res) => {
+  const userId = getAuthUserId(req);
+  if (!userId) return res.status(401).json({ error: "Token invalido" });
+
+  const currentPassword = String(req.body?.currentPassword ?? "");
+  const newPassword = String(req.body?.newPassword ?? "");
+
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: "Informe a senha atual e a nova senha." });
+  }
+
+  if (!isStrongEnoughPassword(newPassword)) {
+    return res.status(400).json({ error: "A nova senha deve ter ao menos 8 caracteres e incluir letra e numero." });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) return res.status(404).json({ error: "Usuario nao encontrado." });
+
+  const ok = await bcrypt.compare(currentPassword, user.password);
+  if (!ok) return res.status(401).json({ error: "Senha atual incorreta." });
+
+  const samePassword = await bcrypt.compare(newPassword, user.password);
+  if (samePassword) {
+    return res.status(400).json({ error: "A nova senha deve ser diferente da senha atual." });
+  }
+
+  const password = await bcrypt.hash(newPassword, 10);
+  await prisma.user.update({
+    where: { id: userId },
+    data: { password },
+  });
+
+  res.json({ ok: true, message: "Senha alterada com sucesso." });
 });
 
 

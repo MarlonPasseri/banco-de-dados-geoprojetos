@@ -12,6 +12,7 @@ model User {
   username           String?                      @unique
   email              String?                      @unique
   name               String?
+  avatarUrl          String?
   password           String                       // hash
   emailVerifiedAt    DateTime?
   disabledAt         DateTime?

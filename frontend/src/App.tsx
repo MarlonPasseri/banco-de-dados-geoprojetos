@@ -10,6 +10,7 @@ import Insersao from "./pages/Insersao";
 import Edicao from "./pages/Edicao";
 import Modelagem from "./pages/Modelagem";
 import { ThemeProvider } from "./components/ThemeProvider";
+import Usuario from "./pages/Usuario";
 
 
 function isAuthed() {
@@ -34,6 +35,7 @@ function AnimatedRoutes() {
         <Route path="/insersao" element={<PrivateRoute><Insersao /></PrivateRoute>} />
         <Route path="/edicao" element={<PrivateRoute><Edicao /></PrivateRoute>} />
         <Route path="/modelagem" element={<PrivateRoute><Modelagem /></PrivateRoute>} />
+        <Route path="/usuario" element={<PrivateRoute><Usuario /></PrivateRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

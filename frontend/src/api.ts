@@ -4,6 +4,13 @@ const fallbackApiBase =
     : "http://localhost:3001/api";
 
 const API_BASE = import.meta.env.VITE_API_URL || fallbackApiBase;
+const AUTH_USER_KEY = "auth_user";
+const AUTH_USER_EVENT = "auth-user-change";
+
+function dispatchAuthUserChange() {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(AUTH_USER_EVENT));
+}
 
 export function getToken() {
   return localStorage.getItem("token") || "";
@@ -15,6 +22,8 @@ export function setToken(token: string) {
 
 export function clearToken() {
   localStorage.removeItem("token");
+  localStorage.removeItem(AUTH_USER_KEY);
+  dispatchAuthUserChange();
 }
 
 async function http<T>(path: string, opts: RequestInit = {}): Promise<T> {
@@ -50,8 +59,50 @@ export type AuthUser = {
   username?: string | null;
   email?: string | null;
   name?: string | null;
+  avatarUrl?: string | null;
   emailVerified: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 };
+
+export function getStoredUser(): AuthUser | null {
+  if (typeof window === "undefined") return null;
+
+  const raw = localStorage.getItem(AUTH_USER_KEY);
+  if (!raw) return null;
+
+  try {
+    return JSON.parse(raw) as AuthUser;
+  } catch {
+    localStorage.removeItem(AUTH_USER_KEY);
+    return null;
+  }
+}
+
+export function setStoredUser(user: AuthUser | null) {
+  if (typeof window === "undefined") return;
+
+  if (user) {
+    localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+  } else {
+    localStorage.removeItem(AUTH_USER_KEY);
+  }
+
+  dispatchAuthUserChange();
+}
+
+export function subscribeAuthUserChange(listener: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  const onChange = () => listener();
+  window.addEventListener(AUTH_USER_EVENT, onChange);
+  window.addEventListener("storage", onChange);
+
+  return () => {
+    window.removeEventListener(AUTH_USER_EVENT, onChange);
+    window.removeEventListener("storage", onChange);
+  };
+}
 
 export async function login(identifier: string, password: string) {
   const r = await http<{ token: string; user: AuthUser }>(`/auth/login`, {
@@ -62,6 +113,7 @@ export async function login(identifier: string, password: string) {
 
   // ✅ já salva token aqui pra evitar esquecer no front
   setToken(r.token);
+  setStoredUser(r.user);
   return r;
 }
 
@@ -71,6 +123,32 @@ export async function setupAdmin() {
 
 export async function registerUser(payload: { name: string; email: string; password: string }) {
   return http<{ ok: boolean; email: string; message: string }>(`/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function fetchCurrentUser() {
+  const user = await http<AuthUser>(`/auth/me`);
+  setStoredUser(user);
+  return user;
+}
+
+export async function updateCurrentUser(payload: { name?: string; email?: string; avatarUrl?: string }) {
+  const r = await http<{ user: AuthUser; token: string }>(`/auth/me`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  setToken(r.token);
+  setStoredUser(r.user);
+  return r;
+}
+
+export async function changePassword(payload: { currentPassword: string; newPassword: string }) {
+  return http<{ ok: boolean; message: string }>(`/auth/change-password`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
