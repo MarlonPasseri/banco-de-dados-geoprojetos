@@ -45,11 +45,19 @@ async function http<T>(path: string, opts: RequestInit = {}): Promise<T> {
 }
 
 // ---------- Auth ----------
-export async function login(username: string, password: string) {
-  const r = await http<{ token: string }>(`/auth/login`, {
+export type AuthUser = {
+  id: number;
+  username?: string | null;
+  email?: string | null;
+  name?: string | null;
+  emailVerified: boolean;
+};
+
+export async function login(identifier: string, password: string) {
+  const r = await http<{ token: string; user: AuthUser }>(`/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ identifier, password }),
   });
 
   // ✅ já salva token aqui pra evitar esquecer no front
@@ -59,6 +67,14 @@ export async function login(username: string, password: string) {
 
 export async function setupAdmin() {
   return http<{ ok: boolean }>(`/setup`, { method: "POST" });
+}
+
+export async function registerUser(payload: { name: string; email: string; password: string }) {
+  return http<{ ok: boolean; email: string; message: string }>(`/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
 }
 
 // ---------- Grid types ----------

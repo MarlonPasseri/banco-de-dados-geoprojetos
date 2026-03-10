@@ -71,7 +71,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <nav className="nav-strip mt-3 flex items-center gap-1 overflow-x-auto pb-1">
             <NavItem to="/" label="Dashboard" Icon={LayoutGrid} />
             <NavItem to="/consultas" label="Consultas" Icon={Search} />
-            <NavItem to="/modelagem" label="Modelagem" Icon={Database} />
+            <NavItem to="/modelagem" label="Follow up" Icon={Database} />
             <NavItem to="/insersao" label="Insercao" Icon={PlusSquare} />
             <NavItem to="/edicao" label="Edicao" Icon={FileEdit} />
             <NavItem to="/import" label="Importar" Icon={Upload} />

@@ -1,27 +1,42 @@
 import { useEffect, useMemo, useState } from "react";
-import { login, setupAdmin } from "../api";
+import { login, registerUser, setupAdmin } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
 import { AnimatePresence, motion } from "framer-motion";
-import { ArrowRight, Database, Eye, EyeOff, Lock, MoonStar, ShieldCheck, Sparkles, SunMedium, User } from "lucide-react";
+import {
+  ArrowRight,
+  Database,
+  Eye,
+  EyeOff,
+  Lock,
+  Mail,
+  MoonStar,
+  ShieldCheck,
+  Sparkles,
+  SunMedium,
+  User,
+  UserRoundPlus,
+} from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { safeUUID } from "../utils/uuid";
 import { useTheme } from "../components/ThemeProvider";
+
+type AuthMode = "login" | "register";
 
 const highlights = [
   {
     icon: Database,
     title: "Dados centralizados",
-    text: "Importacao, consulta e modelagem em um unico fluxo.",
+    text: "Importacao, consulta e follow up em um unico fluxo.",
   },
   {
     icon: ShieldCheck,
-    title: "Ambiente local",
-    text: "Controle de acesso via token e operacao dentro da sua rede.",
+    title: "Acesso simples",
+    text: "Cadastro direto com nome, e-mail e senha, sem depender de provedor externo.",
   },
   {
     icon: Sparkles,
     title: "Operacao rapida",
-    text: "Edicao e acompanhamento das GPs com menos passos.",
+    text: "Criou a conta, entrou. Menos etapas para o time interno.",
   },
 ];
 
@@ -29,50 +44,64 @@ export default function Login() {
   const nav = useNavigate();
   const { isDark, toggleTheme } = useTheme();
 
-  const [username, setUsername] = useState("admin");
+  const [mode, setMode] = useState<AuthMode>("login");
+  const [identifier, setIdentifier] = useState("admin");
   const [password, setPassword] = useState("admin123");
   const [showPassword, setShowPassword] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [registerPassword, setRegisterPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+
+  const [loadingAction, setLoadingAction] = useState<"login" | "register" | null>(null);
   const [formError, setFormError] = useState("");
   const [toast, setToast] = useState<ToastMsg | null>(null);
 
-  const canSubmit = useMemo(() => username.trim() && password.trim(), [username, password]);
+  const canLogin = useMemo(() => Boolean(identifier.trim() && password.trim()), [identifier, password]);
+  const canRegister = useMemo(
+    () => Boolean(name.trim() && email.trim() && registerPassword.trim() && confirmPassword.trim()),
+    [confirmPassword, email, name, registerPassword]
+  );
 
   useEffect(() => {
     if (localStorage.getItem("token")) nav("/", { replace: true });
   }, [nav]);
 
-  async function onSubmit(e: React.FormEvent) {
+  function clearRegisterForm() {
+    setName("");
+    setEmail("");
+    setRegisterPassword("");
+    setConfirmPassword("");
+  }
+
+  async function onSubmitLogin(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!canSubmit) {
-      setFormError("Informe usuario e senha para entrar.");
-      setToast({
-        id: safeUUID(),
-        type: "error",
-        title: "Campos obrigatorios",
-        text: "Informe usuario e senha para entrar.",
-      });
+    if (!canLogin) {
+      setFormError("Informe seu usuario ou e-mail e a senha.");
       return;
     }
 
     setFormError("");
-    setLoading(true);
+    setLoadingAction("login");
 
     try {
-      await setupAdmin();
-      await login(username, password);
+      if (identifier.trim().toLowerCase() === "admin") {
+        await setupAdmin().catch(() => undefined);
+      }
 
+      await login(identifier.trim(), password);
       setToast({
         id: safeUUID(),
         type: "success",
         title: "Bem-vindo",
         text: "Login realizado com sucesso.",
       });
-
-      setTimeout(() => nav("/", { replace: true }), 350);
+      setTimeout(() => nav("/", { replace: true }), 300);
     } catch (e: any) {
-      const message = e?.message || "Usuario ou senha invalidos.";
+      const message = e?.message || "Usuario, e-mail ou senha invalidos.";
       setFormError(message);
       setToast({
         id: safeUUID(),
@@ -81,12 +110,63 @@ export default function Login() {
         text: message,
       });
     } finally {
-      setLoading(false);
+      setLoadingAction(null);
+    }
+  }
+
+  async function onSubmitRegister(e: React.FormEvent) {
+    e.preventDefault();
+
+    const trimmedName = name.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!canRegister) {
+      setFormError("Preencha nome, e-mail, senha e confirmacao.");
+      return;
+    }
+
+    if (registerPassword !== confirmPassword) {
+      setFormError("A confirmacao de senha nao confere.");
+      return;
+    }
+
+    setFormError("");
+    setLoadingAction("register");
+
+    try {
+      const result = await registerUser({
+        name: trimmedName,
+        email: normalizedEmail,
+        password: registerPassword,
+      });
+
+      setMode("login");
+      setIdentifier(normalizedEmail);
+      setPassword("");
+      clearRegisterForm();
+      setToast({
+        id: safeUUID(),
+        type: "success",
+        title: "Cadastro criado",
+        text: result.message,
+      });
+    } catch (e: any) {
+      const message = e?.message || "Falha ao criar a conta.";
+      setFormError(message);
+      setToast({
+        id: safeUUID(),
+        type: "error",
+        title: "Falha no cadastro",
+        text: message,
+      });
+    } finally {
+      setLoadingAction(null);
     }
   }
 
   function fillDefaultCredentials() {
-    setUsername("admin");
+    setMode("login");
+    setIdentifier("admin");
     setPassword("admin123");
     setFormError("");
   }
@@ -133,16 +213,14 @@ export default function Login() {
             </div>
 
             <div className="relative">
-              <div className="login-mark">
-                GP
-              </div>
+              <div className="login-mark">GP</div>
               <h1 className="mt-7 heading text-3xl font-semibold leading-tight">
                 Banco de Dados
                 <br />
                 GeoProjetos
               </h1>
               <p className="mt-3 max-w-md text-sm text-zinc-200">
-                Plataforma interna para acompanhar contratos, GPs e follow-ups com operacao rapida.
+                Plataforma interna para acompanhar contratos, GPs e follow-ups com cadastro e acesso simplificados.
               </p>
 
               <div className="mt-7 grid gap-3">
@@ -169,8 +247,8 @@ export default function Login() {
                   <div className="text-[11px] text-zinc-300">Persistencia</div>
                 </div>
                 <div className="rounded-xl border border-white/15 bg-white/5 px-3 py-2">
-                  <div className="text-lg font-semibold">JWT</div>
-                  <div className="text-[11px] text-zinc-300">Acesso</div>
+                  <div className="text-lg font-semibold">LOGIN</div>
+                  <div className="text-[11px] text-zinc-300">Direto</div>
                 </div>
               </div>
 
@@ -190,12 +268,43 @@ export default function Login() {
             <div className="mb-6 flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-wider text-zinc-500">Acesso ao sistema</p>
-                <h2 className="mt-1 heading text-2xl font-semibold text-zinc-900">Entrar</h2>
-                <p className="mt-1 text-sm text-zinc-500">Use seu usuario e senha para continuar.</p>
+                <h2 className="mt-1 heading text-2xl font-semibold text-zinc-900">
+                  {mode === "login" ? "Entrar" : "Criar conta"}
+                </h2>
+                <p className="mt-1 text-sm text-zinc-500">
+                  {mode === "login"
+                    ? "Use seu usuario ou e-mail para continuar."
+                    : "Cadastre um novo usuario e entre em seguida, sem etapa extra de verificacao."}
+                </p>
               </div>
               <div className="hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 sm:block">
                 Ambiente local
               </div>
+            </div>
+
+            <div className="mb-5 inline-flex w-full rounded-2xl border border-zinc-200 bg-zinc-100 p-1">
+              <button
+                type="button"
+                className={`flex h-10 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-medium transition ${mode === "login" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600"}`}
+                onClick={() => {
+                  setMode("login");
+                  setFormError("");
+                }}
+              >
+                <ArrowRight size={16} />
+                Entrar
+              </button>
+              <button
+                type="button"
+                className={`flex h-10 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-medium transition ${mode === "register" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600"}`}
+                onClick={() => {
+                  setMode("register");
+                  setFormError("");
+                }}
+              >
+                <UserRoundPlus size={16} />
+                Criar conta
+              </button>
             </div>
 
             {formError && (
@@ -204,104 +313,235 @@ export default function Login() {
               </div>
             )}
 
-            <form onSubmit={onSubmit} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-sm text-zinc-700">Usuario</label>
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
-                    <User size={16} />
-                  </span>
-                  <input
-                    className="input pl-10"
-                    value={username}
-                    onChange={(e) => {
-                      setUsername(e.target.value);
-                      if (formError) setFormError("");
-                    }}
-                    placeholder="admin"
-                    autoComplete="username"
-                  />
+            {mode === "login" ? (
+              <form onSubmit={onSubmitLogin} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-sm text-zinc-700">Usuario ou e-mail</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+                      {identifier.includes("@") ? <Mail size={16} /> : <User size={16} />}
+                    </span>
+                    <input
+                      className="input pl-10"
+                      value={identifier}
+                      onChange={(e) => {
+                        setIdentifier(e.target.value);
+                        if (formError) setFormError("");
+                      }}
+                      placeholder="admin ou voce@empresa.com"
+                      autoComplete="username"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="text-sm text-zinc-700">Senha</label>
-                <div className="relative">
-                  <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
-                    <Lock size={16} />
-                  </span>
-                  <input
-                    className="input pl-10 pr-10"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(e) => {
-                      setPassword(e.target.value);
-                      if (formError) setFormError("");
-                    }}
-                    placeholder="admin123"
-                    autoComplete="current-password"
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-                    onClick={() => setShowPassword((v) => !v)}
-                    aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                  >
-                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                  </button>
-                </div>
-              </div>
-
-              <button className="btn btn-primary h-11 w-full" disabled={loading || !canSubmit}>
-                <AnimatePresence mode="wait">
-                  {loading ? (
-                    <motion.span
-                      key="loading"
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      transition={{ duration: 0.15 }}
-                      className="inline-flex items-center gap-2"
+                <div className="space-y-1">
+                  <label className="text-sm text-zinc-700">Senha</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+                      <Lock size={16} />
+                    </span>
+                    <input
+                      className="input pl-10 pr-10"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        if (formError) setFormError("");
+                      }}
+                      placeholder="Sua senha"
+                      autoComplete="current-password"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                     >
-                      <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                      Entrando...
-                    </motion.span>
-                  ) : (
-                    <motion.span
-                      key="idle"
-                      initial={{ opacity: 0, y: 4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -4 }}
-                      transition={{ duration: 0.15 }}
-                      className="inline-flex items-center gap-2"
-                    >
-                      Continuar
-                      <ArrowRight size={16} />
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </button>
-
-              <button
-                type="button"
-                className="btn h-11 w-full"
-                onClick={fillDefaultCredentials}
-                disabled={loading}
-                title="Preenche as credenciais padrao de desenvolvimento"
-              >
-                Usar admin padrao
-              </button>
-
-              <div className="space-y-2 pt-1 text-xs text-zinc-500">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="badge">Padrao: admin / admin123</span>
-                  <span className="text-zinc-400">configure em backend/.env</span>
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
                 </div>
-                <p className="text-zinc-400">
-                  Dica: apos primeiro acesso, altere as credenciais no backend para ambiente produtivo.
-                </p>
-              </div>
-            </form>
+
+                <button className="btn btn-primary h-11 w-full" disabled={loadingAction !== null || !canLogin}>
+                  <AnimatePresence mode="wait">
+                    {loadingAction === "login" ? (
+                      <motion.span
+                        key="loading"
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.15 }}
+                        className="inline-flex items-center gap-2"
+                      >
+                        <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                        Entrando...
+                      </motion.span>
+                    ) : (
+                      <motion.span
+                        key="idle"
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.15 }}
+                        className="inline-flex items-center gap-2"
+                      >
+                        Continuar
+                        <ArrowRight size={16} />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn h-11 w-full"
+                  onClick={fillDefaultCredentials}
+                  disabled={loadingAction !== null}
+                  title="Preenche as credenciais padrao de desenvolvimento"
+                >
+                  Usar admin padrao
+                </button>
+
+                <div className="space-y-2 pt-1 text-xs text-zinc-500">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="badge">Padrao: admin / admin123</span>
+                    <span className="text-zinc-400">configure em backend/.env</span>
+                  </div>
+                  <p className="text-zinc-400">Novos usuarios entram imediatamente apos o cadastro.</p>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={onSubmitRegister} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-sm text-zinc-700">Nome</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+                      <User size={16} />
+                    </span>
+                    <input
+                      className="input pl-10"
+                      value={name}
+                      onChange={(e) => {
+                        setName(e.target.value);
+                        if (formError) setFormError("");
+                      }}
+                      placeholder="Seu nome"
+                      autoComplete="name"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm text-zinc-700">E-mail</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+                      <Mail size={16} />
+                    </span>
+                    <input
+                      className="input pl-10"
+                      type="email"
+                      value={email}
+                      onChange={(e) => {
+                        setEmail(e.target.value);
+                        if (formError) setFormError("");
+                      }}
+                      placeholder="voce@empresa.com"
+                      autoComplete="email"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm text-zinc-700">Senha</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+                      <Lock size={16} />
+                    </span>
+                    <input
+                      className="input pl-10 pr-10"
+                      type={showPassword ? "text" : "password"}
+                      value={registerPassword}
+                      onChange={(e) => {
+                        setRegisterPassword(e.target.value);
+                        if (formError) setFormError("");
+                      }}
+                      placeholder="Minimo 8 caracteres com letra e numero"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
+                    >
+                      {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-sm text-zinc-700">Confirmar senha</label>
+                  <div className="relative">
+                    <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
+                      <Lock size={16} />
+                    </span>
+                    <input
+                      className="input pl-10 pr-10"
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => {
+                        setConfirmPassword(e.target.value);
+                        if (formError) setFormError("");
+                      }}
+                      placeholder="Repita a senha"
+                      autoComplete="new-password"
+                    />
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                      onClick={() => setShowConfirmPassword((v) => !v)}
+                      aria-label={showConfirmPassword ? "Ocultar confirmacao" : "Mostrar confirmacao"}
+                    >
+                      {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                    </button>
+                  </div>
+                </div>
+
+                <button className="btn btn-primary h-11 w-full" disabled={loadingAction !== null || !canRegister}>
+                  <AnimatePresence mode="wait">
+                    {loadingAction === "register" ? (
+                      <motion.span
+                        key="loading-register"
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.15 }}
+                        className="inline-flex items-center gap-2"
+                      >
+                        <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
+                        Criando conta...
+                      </motion.span>
+                    ) : (
+                      <motion.span
+                        key="idle-register"
+                        initial={{ opacity: 0, y: 4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -4 }}
+                        transition={{ duration: 0.15 }}
+                        className="inline-flex items-center gap-2"
+                      >
+                        Criar conta
+                        <UserRoundPlus size={16} />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </button>
+
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-500">
+                  Depois do cadastro, o usuario ja pode usar o login com o e-mail e a senha criados.
+                </div>
+              </form>
+            )}
           </motion.section>
         </motion.div>
       </div>

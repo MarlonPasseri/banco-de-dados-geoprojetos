@@ -9,6 +9,11 @@ import { signToken, authMiddleware } from "./auth.js";
 import { parseContratosSheet, parseSheetToGrid } from "./importExcel.js";
 import { env } from "./config.js";
 import { createRateLimiter } from "./rateLimit.js";
+import {
+  isStrongEnoughPassword,
+  isValidEmail,
+  normalizeEmail,
+} from "./userAuth.js";
 
 function wrapMaybeAsync(handler: any) {
   if (typeof handler !== "function" || handler.length >= 4) return handler;
@@ -66,9 +71,17 @@ const loginLimiter = createRateLimiter({
   max: 10,
   message: "Muitas tentativas de login. Tente novamente em alguns minutos.",
   keyGenerator: (req) => {
-    const username = String(req.body?.username ?? "").trim().toLowerCase();
-    return `${req.ip || "unknown"}:${username}`;
+    const identifier = String(req.body?.identifier ?? req.body?.username ?? req.body?.email ?? "").trim().toLowerCase();
+    return `${req.ip || "unknown"}:${identifier}`;
   },
+});
+
+const registerLimiter = createRateLimiter({
+  keyPrefix: "register",
+  windowMs: 15 * 60 * 1000,
+  max: 6,
+  message: "Muitas tentativas de cadastro. Aguarde alguns minutos.",
+  keyGenerator: (req) => `${req.ip || "unknown"}:${normalizeEmail(req.body?.email)}`,
 });
 
 const setupLimiter = createRateLimiter({
@@ -95,6 +108,7 @@ router.get("/", (_req, res) => {
     endpoints: [
       "/api/health",
       "/api/setup",
+      "/api/auth/register",
       "/api/auth/login",
       "/api/clientes",
       "/api/gps",
@@ -179,6 +193,25 @@ function normalizeLoose(v: unknown) {
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeLoginIdentifier(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+async function findUserByLoginIdentifier(identifier: string) {
+  const normalized = normalizeLoginIdentifier(identifier);
+  const email = normalizeEmail(normalized);
+  const usernames = Array.from(new Set([normalized, normalized.toLowerCase()])).filter((value) => value.length > 0);
+
+  return prisma.user.findFirst({
+    where: {
+      OR: [
+        ...(usernames.length > 0 ? usernames.map((username) => ({ username })) : []),
+        ...(email ? [{ email }] : []),
+      ],
+    },
+  });
 }
 
 function sanitizeGridValue(v: unknown) {
@@ -361,36 +394,111 @@ router.post("/setup", setupLimiter, async (req, res) => {
 
   const username = env.adminUser;
   const pass = env.adminPass;
+  const email = env.adminEmail;
 
-  const exists = await prisma.user.findUnique({ where: { username } });
+  const exists = await prisma.user.findFirst({
+    where: {
+      OR: [
+        { username },
+        ...(email ? [{ email }] : []),
+      ],
+    },
+  });
   if (!exists) {
     const hash = await bcrypt.hash(pass, 10);
-    await prisma.user.create({ data: { username, password: hash } });
+    await prisma.user.create({
+      data: {
+        username,
+        email,
+        name: "Administrador",
+        password: hash,
+        emailVerifiedAt: email ? new Date() : null,
+      },
+    });
   }
 
   res.json({ ok: true });
 });
 
-router.post("/auth/login", loginLimiter, async (req, res) => {
-  const username = String(req.body?.username ?? "").trim();
+router.post("/auth/register", registerLimiter, async (req, res) => {
+  const name = String(req.body?.name ?? "").replace(/\s+/g, " ").trim();
+  const email = normalizeEmail(req.body?.email);
   const password = String(req.body?.password ?? "");
 
-  if (!username || !password) {
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ error: "Informe um e-mail valido." });
+  }
+
+  if (!isStrongEnoughPassword(password)) {
+    return res.status(400).json({ error: "A senha deve ter ao menos 8 caracteres e incluir letra e numero." });
+  }
+
+  if (name.length > 120) {
+    return res.status(400).json({ error: "Nome invalido." });
+  }
+
+  const existing = await prisma.user.findFirst({
+    where: {
+      OR: [{ email }],
+    },
+  });
+
+  if (existing) {
+    return res.status(409).json({ error: "E-mail ja cadastrado. Use o reenvio de verificacao ou tente entrar." });
+  }
+
+  const hash = await bcrypt.hash(password, 10);
+  const user = await prisma.user.create({
+    data: {
+      email,
+      name: name || null,
+      password: hash,
+      emailVerifiedAt: new Date(),
+    },
+  });
+
+  res.status(201).json({
+    ok: true,
+    email,
+    message: "Conta criada com sucesso. Agora voce ja pode entrar.",
+  });
+});
+
+router.post("/auth/login", loginLimiter, async (req, res) => {
+  const identifier = normalizeLoginIdentifier(req.body?.identifier ?? req.body?.username ?? req.body?.email);
+  const password = String(req.body?.password ?? "");
+
+  if (!identifier || !password) {
     return res.status(400).json({ error: "Credenciais invalidas" });
   }
 
-  if (username.length > 80 || password.length > 256) {
+  if (identifier.length > 160 || password.length > 256) {
     return res.status(400).json({ error: "Credenciais invalidas" });
   }
 
-  const u = await prisma.user.findUnique({ where: { username } });
+  const u = await findUserByLoginIdentifier(identifier);
   if (!u) return res.status(401).json({ error: "Usuario/senha invalidos" });
+  if (u.disabledAt) return res.status(403).json({ error: "Usuario desativado." });
 
   const ok = await bcrypt.compare(password, u.password);
   if (!ok) return res.status(401).json({ error: "Usuario/senha invalidos" });
 
-  const token = signToken({ sub: u.id, username: u.username });
-  res.json({ token });
+  const token = signToken({
+    sub: u.id,
+    username: u.username,
+    email: u.email,
+    name: u.name,
+  });
+  res.json({
+    token,
+    user: {
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      name: u.name,
+      emailVerified: Boolean(u.emailVerifiedAt),
+    },
+  });
 });
 
 

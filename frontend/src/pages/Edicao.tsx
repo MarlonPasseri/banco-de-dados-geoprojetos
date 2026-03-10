@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { FilePenLine } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import { fetchGrid, searchGrid, updateCell, type GridColumn, type GridRow } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
 import { EmptyState } from "../components/UiStates";
@@ -14,68 +15,63 @@ function norm(s: string) {
     .toLowerCase();
 }
 
+function normalizeLoose(s: string) {
+  return norm(s).replace(/[^a-z0-9]/g, "");
+}
+
 function toDash(v: any) {
   const s = v == null ? "" : String(v).trim();
   return s ? s : "-";
 }
 
-function isDateLabel(label: string) {
-  const s = norm(label);
-  return s.includes("data") || s.includes("entrega") || s.includes("convite") || s.includes("contato");
+function editableValue(v: any) {
+  const s = v == null ? "" : String(v).trim();
+  return s === "-" ? "" : s;
 }
 
-function isMoneyLabel(label: string) {
+function findNumeroKey(columns: GridColumn[]) {
+  const aliases = new Set(["n", "numero"]);
+
+  for (const col of columns) {
+    if (aliases.has(normalizeLoose(col.label))) return col.key;
+  }
+
+  for (const col of columns) {
+    if (aliases.has(normalizeLoose(col.key))) return col.key;
+  }
+
+  return null;
+}
+
+function isDateField(label: string) {
+  const s = norm(label);
+  return s.includes("data") || s.includes("entrega") || s.includes("convite") || s.includes("ultimo contato");
+}
+
+function isMoneyField(label: string) {
   const s = norm(label);
   return s.includes("valor") || s.includes("total") || s.includes("media mensal");
 }
 
-function formatDateValue(v: any) {
-  if (v == null || v === "" || v === "-") return "-";
-
-  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v)) {
-    const [y, m, d] = v.split("-").map(Number);
-    const dt = new Date(Date.UTC(y, m - 1, d));
-    return dt.toLocaleDateString("pt-BR", { timeZone: "UTC" });
-  }
-
-  if (typeof v === "string" && /^\d{2}\/\d{2}\/\d{4}$/.test(v)) return v;
-
-  const n = typeof v === "number" ? v : Number(String(v).trim());
-  if (Number.isFinite(n) && n > 20000 && n < 80000) {
-    const ms = (n - 25569) * 86400 * 1000;
-    const dt = new Date(ms);
-    if (!Number.isNaN(dt.getTime())) {
-      return dt.toLocaleDateString("pt-BR", { timeZone: "UTC" });
-    }
-  }
-
-  return String(v);
+function isLongTextField(label: string) {
+  const s = norm(label);
+  return s.includes("observ") || s.includes("descricao") || s.includes("nome do projeto");
 }
 
-function formatMoneyValue(v: any) {
-  if (v == null || v === "" || v === "-") return "-";
-  if (typeof v === "number" && Number.isFinite(v)) {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
-  }
+function getPlaceholder(label: string) {
+  if (isDateField(label)) return "dd/mm/aaaa ou aaaa-mm-dd";
+  if (isMoneyField(label)) return "Ex: R$ 1.234,56";
 
-  let s = String(v).trim();
-  if (!s) return "-";
-
-  const isNeg = /^\(.*\)$/.test(s);
-  if (isNeg) s = s.slice(1, -1);
-
-  s = s.replace(/[^\d,.\-]/g, "");
-  if (s.includes(",") && s.includes(".")) {
-    s = s.replace(/\./g, "").replace(",", ".");
-  } else if (s.includes(",")) {
-    s = s.replace(",", ".");
-  }
-
-  const n = Number(s);
-  if (!Number.isFinite(n)) return String(v);
-  const value = isNeg ? -n : n;
-  return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
+  const s = norm(label);
+  if (s.includes("contato")) return "Ex: nome, telefone ou e-mail";
+  return "";
 }
+
+type EdicaoLocationState = {
+  row?: GridRow;
+  sheet?: string;
+  numero?: string;
+};
 
 export default function Edicao() {
   const container = {
@@ -87,7 +83,9 @@ export default function Edicao() {
     show: { opacity: 1, y: 0, transition: { duration: 0.25 } },
   };
 
-  const sheet = "CONTRATOS";
+  const location = useLocation();
+  const routeState = (location.state || {}) as EdicaoLocationState;
+  const [sheet, setSheet] = useState(routeState.sheet || "CONTRATOS");
 
   const [toast, setToast] = useState<ToastMsg | null>(null);
   const [columns, setColumns] = useState<GridColumn[]>([]);
@@ -98,10 +96,7 @@ export default function Edicao() {
 
   const [currentRow, setCurrentRow] = useState<GridRow | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState("");
-  const lastEditKeyRef = useRef<string | null>(null);
-  const lastEditValueRef = useRef<string>("");
+  const prefillAppliedRef = useRef(false);
 
   const canSearch = useMemo(() => String(numero).trim().length > 0, [numero]);
 
@@ -119,53 +114,63 @@ export default function Edicao() {
         const r = await fetchGrid({ sheet, page: 1, pageSize: 1 });
         const cols = (r.columns || []).filter((c) => !c.hidden);
         setColumns(cols);
-
-        const byLabel = new Map<string, string>();
-        for (const c of cols) byLabel.set(norm(c.label), c.key);
-
-        const key =
-          byLabel.get(norm("N.º")) || byLabel.get(norm("Nº")) || byLabel.get(norm("N°")) || byLabel.get(norm("N")) || null;
-
-        setKeyNumero(key);
+        setKeyNumero(findNumeroKey(cols));
       } catch (e: any) {
         toastError("Erro", e?.message || "Falha ao carregar colunas");
       }
     })();
-  }, []);
+  }, [sheet]);
+
+  useEffect(() => {
+    if (prefillAppliedRef.current) return;
+    if (!routeState.row) return;
+
+    if (routeState.sheet) setSheet(routeState.sheet);
+    setCurrentRow(routeState.row);
+    setFormData({ ...(routeState.row.data || {}) });
+    setNumero(routeState.numero || "");
+    prefillAppliedRef.current = true;
+  }, [routeState.numero, routeState.row, routeState.sheet]);
 
   function clearForm() {
     setNumero("");
     setCurrentRow(null);
     setFormData({});
-    setEditingKey(null);
-    setEditValue("");
-    lastEditKeyRef.current = null;
-    lastEditValueRef.current = "";
+  }
+
+  function loadRow(row: GridRow, numeroValue?: string) {
+    setCurrentRow(row);
+    setFormData({ ...(row.data || {}) });
+
+    if (numeroValue != null) {
+      setNumero(numeroValue);
+      return;
+    }
+
+    if (keyNumero) {
+      setNumero(String(row.data?.[keyNumero] ?? "").trim());
+    }
   }
 
   async function onBuscar() {
     if (!canSearch) return;
-    if (!keyNumero) return toastError("Configuracao", 'Nao encontrei a coluna "N.º". Importe a planilha primeiro.');
+    if (!keyNumero) return toastError("Configuracao", 'Nao encontrei a coluna "Numero". Importe a planilha primeiro.');
 
     setLoading(true);
     try {
-      const r = await searchGrid(String(numero).trim(), sheet, 1, 50);
-      const exact = (r.items || []).find((it) => String(it.data?.[keyNumero!]).trim() === String(numero).trim());
+      const numeroBusca = String(numero).trim();
+      const r = await searchGrid(numeroBusca, sheet, 1, 50);
+      const exact = (r.items || []).find((it) => String(it.data?.[keyNumero]).trim() === numeroBusca);
       const row = exact || (r.items || [])[0];
 
       if (!row) {
-        toastError("Nao encontrado", `Nenhum registro com N.º = ${numero}`);
+        toastError("Nao encontrado", `Nenhum registro com Numero = ${numero}`);
         setCurrentRow(null);
         setFormData({});
         return;
       }
 
-      setCurrentRow(row);
-      setFormData({ ...(row.data || {}) });
-      setEditingKey(null);
-      setEditValue("");
-      lastEditKeyRef.current = null;
-      lastEditValueRef.current = "";
+      loadRow(row, numeroBusca);
       toastOk("Encontrado", "Registro carregado para edicao.");
     } catch (e: any) {
       toastError("Erro", e?.message || "Falha ao buscar");
@@ -181,30 +186,21 @@ export default function Edicao() {
     try {
       const mergedData = { ...formData };
 
-      if (lastEditKeyRef.current) {
-        mergedData[lastEditKeyRef.current] = lastEditValueRef.current;
-      } else if (editingKey) {
-        mergedData[editingKey] = editValue;
-      }
-
-      setEditingKey(null);
-      setEditValue("");
-      setFormData(mergedData);
-      lastEditKeyRef.current = null;
-      lastEditValueRef.current = "";
-
       for (const c of columns) {
         const value = toDash(mergedData[c.key]);
         await updateCell(currentRow.id, c.key, value);
       }
 
-      if (keyNumero && String(numero).trim()) {
-        const r = await searchGrid(String(numero).trim(), sheet, 1, 50);
-        const exact = (r.items || []).find((it) => String(it.data?.[keyNumero!]).trim() === String(numero).trim());
+      const numeroAtualizado = keyNumero ? editableValue(mergedData[keyNumero]) : String(numero).trim();
+      if (numeroAtualizado) {
+        setNumero(numeroAtualizado);
+        const r = await searchGrid(numeroAtualizado, sheet, 1, 50);
+        const exact = keyNumero
+          ? (r.items || []).find((it) => String(it.data?.[keyNumero] ?? "").trim() === numeroAtualizado)
+          : null;
         const row = exact || (r.items || [])[0] || null;
         if (row) {
-          setCurrentRow(row);
-          setFormData({ ...(row.data || {}) });
+          loadRow(row, numeroAtualizado);
         }
       }
 
@@ -216,26 +212,9 @@ export default function Edicao() {
     }
   }
 
-  function startEdit(key: string, current: any) {
-    setEditingKey(key);
-    setEditValue(String(current ?? ""));
-    lastEditKeyRef.current = key;
-    lastEditValueRef.current = String(current ?? "");
-  }
-
-  function cancelEdit() {
-    setEditingKey(null);
-    setEditValue("");
-    lastEditKeyRef.current = null;
-    lastEditValueRef.current = "";
-  }
-
-  function commitEdit() {
-    if (!editingKey) return;
-    const value = editValue;
-    setFormData((prev) => ({ ...prev, [editingKey]: value }));
-    setEditingKey(null);
-    setEditValue("");
+  function updateField(key: string, value: string) {
+    setFormData((prev) => ({ ...prev, [key]: value }));
+    if (keyNumero && key === keyNumero) setNumero(value);
   }
 
   return (
@@ -249,7 +228,7 @@ export default function Edicao() {
             <FilePenLine size={22} />
             Edicao
           </h1>
-          <p className="page-desc">Pesquise pelo N.º e edite todas as informacoes do registro.</p>
+          <p className="page-desc">Pesquise pelo Numero e edite as informacoes do registro em campos individuais.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="badge">Aba: {sheet}</span>
@@ -260,14 +239,14 @@ export default function Edicao() {
       {!keyNumero && (
         <motion.div className="panel-soft text-sm" variants={item}>
           <p className="font-semibold text-amber-700">Atencao</p>
-          <p className="text-zinc-600">Nao encontrei a coluna <b>N.º</b>. Importe a planilha novamente pelo Dashboard.</p>
+          <p className="text-zinc-600">Nao encontrei a coluna <b>Numero</b>. Importe a planilha novamente pelo Dashboard.</p>
         </motion.div>
       )}
 
       <motion.div className="panel-soft space-y-4" variants={item}>
         <div className="flex flex-col gap-3 md:flex-row md:items-end">
           <div className="space-y-1">
-            <label className="text-sm text-zinc-600">N.º (GP)</label>
+            <label className="text-sm text-zinc-600">Numero (GP)</label>
             <input className="input w-64" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex: 2949" />
           </div>
 
@@ -287,66 +266,47 @@ export default function Edicao() {
         {!currentRow ? (
           <EmptyState
             title="Nenhum registro carregado"
-            text="Informe o N.º (GP) e clique em Buscar para editar os dados."
+            text="Informe o Numero (GP) e clique em Buscar para editar os dados."
           />
         ) : (
-          <div className="table-shell">
-            <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
-              <table className="min-w-[1400px] w-full text-sm">
-                <thead className="sticky top-0 z-10 border-b bg-white">
-                  <tr>
-                    {columns.map((c) => (
-                      <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
-                        {c.label}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b">
-                    {columns.map((c) => {
-                      const isEditing = editingKey === c.key;
-                      const cellValue = formData[c.key];
-                      const displayValue = isDateLabel(c.label)
-                        ? formatDateValue(cellValue)
-                        : isMoneyLabel(c.label)
-                        ? formatMoneyValue(cellValue)
-                        : String(cellValue ?? "-");
+          <>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
+              {columns.map((c) => {
+                const multiline = isLongTextField(c.label);
+                const value = editableValue(formData[c.key]);
 
-                      return (
-                        <td
-                          key={c.key}
-                          className="whitespace-nowrap px-3 py-2"
-                          onDoubleClick={() => startEdit(c.key, cellValue)}
-                          title="Duplo clique para editar"
-                          style={{ cursor: "cell" }}
-                        >
-                          {isEditing ? (
-                            <input
-                              className="input w-full min-w-[140px] py-1"
-                              value={editValue}
-                              onChange={(e) => {
-                                setEditValue(e.target.value);
-                                lastEditValueRef.current = e.target.value;
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") commitEdit();
-                                if (e.key === "Escape") cancelEdit();
-                              }}
-                              onBlur={commitEdit}
-                              autoFocus
-                            />
-                          ) : (
-                            <span>{displayValue}</span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                </tbody>
-              </table>
+                return (
+                  <div key={c.key} className={multiline ? "space-y-1 md:col-span-2 xl:col-span-3" : "space-y-1"}>
+                    <label className="text-sm text-zinc-600">{c.label}</label>
+                    {multiline ? (
+                      <textarea
+                        className="input min-h-28 resize-y"
+                        value={value}
+                        onChange={(e) => updateField(c.key, e.target.value)}
+                        placeholder={getPlaceholder(c.label)}
+                      />
+                    ) : (
+                      <input
+                        className="input"
+                        value={value}
+                        onChange={(e) => updateField(c.key, e.target.value)}
+                        placeholder={getPlaceholder(c.label)}
+                      />
+                    )}
+                  </div>
+                );
+              })}
             </div>
-          </div>
+
+            <div className="flex flex-wrap gap-2 pt-2">
+              <button className="btn btn-primary" disabled={loading} onClick={onSalvar}>
+                {loading ? "Salvando..." : "Salvar alteracoes"}
+              </button>
+              <button className="btn" disabled={loading} onClick={clearForm}>
+                Limpar
+              </button>
+            </div>
+          </>
         )}
       </motion.div>
     </motion.div>

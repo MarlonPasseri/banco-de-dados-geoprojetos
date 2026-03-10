@@ -5,17 +5,25 @@ import { env } from "./config.js";
 type TokenPayload = {
   sub: string;
   username: string;
+  email?: string;
+  name?: string;
 };
 
 function parseTokenPayload(decoded: string | JwtPayload): TokenPayload | null {
   if (!decoded || typeof decoded === "string") return null;
   const sub = typeof decoded.sub === "string" ? decoded.sub : "";
   const username = typeof decoded.username === "string" ? decoded.username : "";
+  const email = typeof decoded.email === "string" ? decoded.email : undefined;
+  const name = typeof decoded.name === "string" ? decoded.name : undefined;
   if (!sub || !username) return null;
-  return { sub, username };
+  return { sub, username, email, name };
 }
 
-export function signToken(payload: { sub: string | number; username: string }) {
+export function signToken(payload: { sub: string | number; username?: string | null; email?: string | null; name?: string | null }) {
+  const username =
+    String(payload.username ?? "").trim() ||
+    String(payload.email ?? "").trim() ||
+    `user-${String(payload.sub)}`;
   const options: SignOptions = {
     expiresIn: env.jwtExpiresIn as SignOptions["expiresIn"],
     issuer: env.jwtIssuer,
@@ -23,7 +31,15 @@ export function signToken(payload: { sub: string | number; username: string }) {
     algorithm: "HS256",
     subject: String(payload.sub),
   };
-  return jwt.sign({ username: payload.username }, env.jwtSecret, options);
+  return jwt.sign(
+    {
+      username,
+      email: payload.email ?? undefined,
+      name: payload.name ?? undefined,
+    },
+    env.jwtSecret,
+    options
+  );
 }
 
 export function authMiddleware(req: Request, res: Response, next: NextFunction) {

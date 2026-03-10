@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Search, SearchX } from "lucide-react";
+import { FilePenLine, Search, SearchX } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { searchGrid, type GridColumn, type GridRow } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
 import { EmptyState, TableSkeletonRows } from "../components/UiStates";
@@ -9,6 +10,32 @@ import { safeUUID } from "../utils/uuid";
 function fmt(v: any) {
   if (v === null || v === undefined || v === "") return "-";
   return String(v);
+}
+
+function norm(s: string) {
+  return String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeLoose(s: string) {
+  return norm(s).replace(/[^a-z0-9]/g, "");
+}
+
+function findNumeroKey(columns: GridColumn[]) {
+  const aliases = new Set(["n", "numero"]);
+
+  for (const col of columns) {
+    if (aliases.has(normalizeLoose(col.label))) return col.key;
+  }
+
+  for (const col of columns) {
+    if (aliases.has(normalizeLoose(col.key))) return col.key;
+  }
+
+  return null;
 }
 
 export default function Consultas() {
@@ -22,6 +49,7 @@ export default function Consultas() {
   };
 
   const [toast, setToast] = useState<ToastMsg | null>(null);
+  const navigate = useNavigate();
 
   const [sheet, setSheet] = useState("CONTRATOS");
   const [q, setQ] = useState("");
@@ -36,6 +64,7 @@ export default function Consultas() {
 
   const query = useMemo(() => q.trim(), [q]);
   const canSearch = query.length >= 2;
+  const numeroKey = useMemo(() => findNumeroKey(columns), [columns]);
 
   useEffect(() => setPage(1), [query, sheet]);
 
@@ -82,6 +111,11 @@ export default function Consultas() {
   }, [canSearch, query, sheet, page]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
+  function goToEdicao(row: GridRow) {
+    const numero = numeroKey ? String(row.data?.[numeroKey] ?? "").trim() : "";
+    navigate("/edicao", { state: { row, sheet, numero } });
+  }
 
   return (
     <motion.div className="space-y-6" variants={container} initial="hidden" animate="show">
@@ -175,6 +209,7 @@ export default function Consultas() {
             <table className="min-w-[1200px] w-full text-sm">
               <thead className="sticky top-0 z-10 border-b bg-white">
                 <tr>
+                  <th className="whitespace-nowrap px-3 py-2 text-left">Acao</th>
                   {columns.map((c) => (
                     <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
                       {c.label}
@@ -186,6 +221,12 @@ export default function Consultas() {
               <tbody>
                 {items.map((r) => (
                   <tr key={r.id} className="border-b transition-colors">
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <button className="btn" onClick={() => goToEdicao(r)}>
+                        <FilePenLine size={16} />
+                        Editar
+                      </button>
+                    </td>
                     {columns.map((c) => (
                       <td key={c.key} className="whitespace-nowrap px-3 py-2">
                         {fmt(r.data?.[c.key])}

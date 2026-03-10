@@ -44,6 +44,21 @@ function parseBoolean(raw: string | undefined, fallback = false) {
   throw new Error(`Invalid boolean env value: ${raw}`);
 }
 
+function parsePositiveInt(raw: string | undefined, fallback: number) {
+  if (raw === undefined || String(raw).trim() === "") return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`Invalid positive integer env value: ${raw}`);
+  }
+  return value;
+}
+
+function parseEmailProvider(raw: string | undefined) {
+  const value = String(raw ?? "console").trim().toLowerCase();
+  if (value === "console" || value === "resend") return value;
+  throw new Error(`Invalid EMAIL_PROVIDER: ${raw}`);
+}
+
 function isWeakSecret(secret: string) {
   const lower = secret.toLowerCase();
   return (
@@ -99,6 +114,19 @@ const jwtAudience = String(process.env.JWT_AUDIENCE ?? "geo-projetos-web").trim(
 const jwtExpiresIn = String(process.env.JWT_EXPIRES_IN ?? "12h").trim() || "12h";
 const trustProxy = parseBoolean(process.env.TRUST_PROXY, false);
 const enableHsts = parseBoolean(process.env.ENABLE_HSTS, isProduction);
+const adminEmail = String(process.env.ADMIN_EMAIL ?? "").trim().toLowerCase() || null;
+const appBaseUrl =
+  String(process.env.APP_BASE_URL ?? corsOrigins[0] ?? "http://localhost:5173")
+    .trim()
+    .replace(/\/+$/, "") || "http://localhost:5173";
+const emailProvider = parseEmailProvider(process.env.EMAIL_PROVIDER);
+const emailFrom = String(process.env.EMAIL_FROM ?? "GeoProjetos <noreply@geoprojetos.local>").trim();
+const resendApiKey = String(process.env.RESEND_API_KEY ?? "").trim() || null;
+const emailVerificationExpiresHours = parsePositiveInt(process.env.EMAIL_VERIFICATION_EXPIRES_HOURS, 24);
+
+if (emailProvider === "resend" && !resendApiKey) {
+  throw new Error("RESEND_API_KEY is required when EMAIL_PROVIDER=resend.");
+}
 
 export const env = {
   nodeEnv,
@@ -114,4 +142,10 @@ export const env = {
   jwtExpiresIn,
   trustProxy,
   enableHsts,
+  adminEmail,
+  appBaseUrl,
+  emailProvider,
+  emailFrom,
+  resendApiKey,
+  emailVerificationExpiresHours,
 } as const;

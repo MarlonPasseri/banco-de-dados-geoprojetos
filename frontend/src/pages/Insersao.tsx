@@ -48,6 +48,20 @@ function normalizeMoneyInput(v: string) {
   return isNeg ? -n : n;
 }
 
+function findColumnKey(columns: GridColumn[], aliases: string[]) {
+  const normalizedAliases = new Set(aliases.map(norm));
+
+  for (const col of columns) {
+    if (normalizedAliases.has(norm(col.label))) return col.key;
+  }
+
+  for (const col of columns) {
+    if (normalizedAliases.has(norm(col.key))) return col.key;
+  }
+
+  return undefined;
+}
+
 type KeyMap = {
   cliente?: string;
   numero?: string;
@@ -58,6 +72,8 @@ type KeyMap = {
   ultimoContato?: string;
   valor?: string;
   status?: string;
+  contatoEmpresa?: string;
+  observacao?: string;
 };
 
 export default function Insersao() {
@@ -85,6 +101,8 @@ export default function Insersao() {
   const [ultimoContato, setUltimoContato] = useState("");
   const [valor, setValor] = useState("");
   const [status, setStatus] = useState("");
+  const [contatoEmpresa, setContatoEmpresa] = useState("");
+  const [observacao, setObservacao] = useState("");
 
   const [currentRow, setCurrentRow] = useState<GridRow | null>(null);
   const [loading, setLoading] = useState(false);
@@ -119,6 +137,18 @@ export default function Insersao() {
           ultimoContato: byLabel.get(norm("ULTIMO CONTATO")) || byLabel.get(norm("ÚLTIMO CONTATO")),
           valor: byLabel.get(norm("VALOR")),
           status: byLabel.get(norm("STATUS")),
+          contatoEmpresa: findColumnKey(cols, ["CONTATO DA EMPRESA", "CONTATOS", "contato_da_empresa", "contatos"]),
+          observacao: findColumnKey(cols, [
+            "OBSERVACAO",
+            "OBSERVACOES",
+            "OBSERVACAO DA EMPRESA",
+            "OBSERVACOES DA EMPRESA",
+            "OBSERVAÇÕES",
+            "OBSERVAÇÃO",
+            "OSERVAÇÕES",
+            "observacao",
+            "observacoes",
+          ]),
         };
 
         setKeyMap(map);
@@ -138,6 +168,8 @@ export default function Insersao() {
     setUltimoContato("");
     setValor("");
     setStatus("");
+    setContatoEmpresa("");
+    setObservacao("");
     setCurrentRow(null);
   }
 
@@ -152,6 +184,8 @@ export default function Insersao() {
     setUltimoContato(String(d[keyMap.ultimoContato || ""] ?? "").trim());
     setValor(String(d[keyMap.valor || ""] ?? "").trim());
     setStatus(String(d[keyMap.status || ""] ?? "").trim());
+    setContatoEmpresa(String(d[keyMap.contatoEmpresa || ""] ?? "").trim());
+    setObservacao(String(d[keyMap.observacao || ""] ?? "").trim());
   }
 
   function buildDataPayload() {
@@ -168,6 +202,8 @@ export default function Insersao() {
 
     if (keyMap.valor) data[keyMap.valor] = normalizeMoneyInput(valor);
     if (keyMap.status) data[keyMap.status] = toDash(status);
+    if (keyMap.contatoEmpresa) data[keyMap.contatoEmpresa] = toDash(contatoEmpresa);
+    if (keyMap.observacao) data[keyMap.observacao] = toDash(observacao);
 
     return data;
   }
@@ -258,6 +294,8 @@ export default function Insersao() {
       ["ultimoContato", "ULTIMO CONTATO"],
       ["valor", "VALOR"],
       ["status", "STATUS"],
+      ["contatoEmpresa", "CONTATO DA EMPRESA"],
+      ["observacao", "OBSERVACAO"],
     ];
     return req.filter(([k]) => !keyMap[k]).map(([, label]) => label);
   }, [keyMap]);
@@ -361,6 +399,26 @@ export default function Insersao() {
           <div className="space-y-1">
             <label className="text-sm text-zinc-600">Ultimo Contato</label>
             <input className="input" value={ultimoContato} onChange={(e) => setUltimoContato(e.target.value)} placeholder="dd/mm/aaaa ou aaaa-mm-dd" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-sm text-zinc-600">Contato da empresa</label>
+            <input
+              className="input"
+              value={contatoEmpresa}
+              onChange={(e) => setContatoEmpresa(e.target.value)}
+              placeholder="Ex: nome, telefone ou e-mail"
+            />
+          </div>
+
+          <div className="space-y-1 md:col-span-2">
+            <label className="text-sm text-zinc-600">Observacao</label>
+            <textarea
+              className="input min-h-28 resize-y"
+              value={observacao}
+              onChange={(e) => setObservacao(e.target.value)}
+              placeholder="Observacoes relevantes sobre o contrato"
+            />
           </div>
         </div>
 

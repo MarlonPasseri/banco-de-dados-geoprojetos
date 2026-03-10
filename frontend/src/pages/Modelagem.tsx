@@ -562,9 +562,9 @@ export default function Modelagem() {
           <div className="page-kicker">Estrutura</div>
           <h1 className="page-title inline-flex items-center gap-2">
             <Database size={22} />
-            Modelagem de Dados
+            Follow up
           </h1>
-          <p className="page-desc">Cadastro e manutencao de Cliente, GP e FollowUp para sua modelagem.</p>
+          <p className="page-desc">Cadastro e manutencao de Cliente, GP e FollowUp.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="badge">Clientes: {clientes.length}</span>
