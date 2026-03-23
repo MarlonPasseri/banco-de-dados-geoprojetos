@@ -160,6 +160,10 @@ function toDateOrNull(v: any) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
+function isIsoDateOnly(v: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(v);
+}
+
 function toIntOrNull(v: any) {
   if (v === undefined || v === null || v === "") return null;
   const n = Number(v);
@@ -1162,11 +1166,28 @@ router.get("/followups", authMiddleware, async (req, res) => {
   const gpId = toIntOrNull(req.query.gpId);
   const gpChave = String(req.query.gpChave ?? "").trim().toUpperCase();
   const status = String(req.query.status ?? "").trim();
+  const date = String(req.query.date ?? "").trim();
+
+  if (date && !isIsoDateOnly(date)) {
+    return res.status(400).json({ error: "data invalida" });
+  }
+
+  const dayStart = date ? new Date(`${date}T00:00:00.000Z`) : null;
+  const dayEnd = dayStart ? new Date(dayStart.getTime() + 24 * 60 * 60 * 1000) : null;
 
   const where: any = {
     ...(gpId ? { gpId } : {}),
     ...(gpChave ? { gp: { chave: { equals: gpChave, mode: "insensitive" } } } : {}),
     ...(status ? { status: { contains: status, mode: "insensitive" } } : {}),
+    ...(dayStart && dayEnd
+      ? {
+          OR: [
+            { convite: { gte: dayStart, lt: dayEnd } },
+            { entrega: { gte: dayStart, lt: dayEnd } },
+            { ultimoContato: { gte: dayStart, lt: dayEnd } },
+          ],
+        }
+      : {}),
   };
 
   const items = await prisma.followUp.findMany({

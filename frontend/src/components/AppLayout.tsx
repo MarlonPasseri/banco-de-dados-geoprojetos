@@ -1,9 +1,53 @@
-import { type ReactNode, useEffect, useState } from "react";
-import { Link, useLocation } from "react-router-dom";
-import { motion } from "framer-motion";
-import { Activity, CircleUserRound, Database, FileEdit, LayoutGrid, LogOut, MoonStar, PlusSquare, Search, SunMedium, Upload } from "lucide-react";
-import { clearToken, fetchCurrentUser, getStoredUser, getToken, subscribeAuthUserChange, type AuthUser } from "../api";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
+import { Activity, BarChart3, BellRing, CircleUserRound, Database, FileEdit, LayoutGrid, LogOut, MoonStar, PlusSquare, Search, SunMedium, Upload } from "lucide-react";
+import { clearToken, fetchCurrentUser, getStoredUser, getToken, listFollowUps, subscribeAuthUserChange, type AuthUser } from "../api";
 import { useTheme } from "./ThemeProvider";
+
+const ACTIVITY_REMINDER_ACK_KEY = "activities_reminder_ack_date";
+const ACTIVITY_REMINDER_HIDDEN_UNTIL_KEY = "activities_reminder_hidden_until";
+const ACTIVITY_REMINDER_INTERVAL_MS = 2 * 60 * 1000;
+
+function todayDateInput() {
+  const now = new Date();
+  const year = String(now.getFullYear());
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function formatReminderDate(date: string) {
+  if (!date) return "";
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) return date;
+  return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+}
+
+function getStoredReminderAckDate() {
+  if (typeof window === "undefined") return "";
+  return window.localStorage.getItem(ACTIVITY_REMINDER_ACK_KEY) || "";
+}
+
+function setStoredReminderAckDate(date: string) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ACTIVITY_REMINDER_ACK_KEY, date);
+}
+
+function getStoredReminderHiddenUntil() {
+  if (typeof window === "undefined") return 0;
+  return Number(window.localStorage.getItem(ACTIVITY_REMINDER_HIDDEN_UNTIL_KEY) || "0");
+}
+
+function setStoredReminderHiddenUntil(timestamp: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ACTIVITY_REMINDER_HIDDEN_UNTIL_KEY, String(timestamp));
+}
+
+function clearStoredReminderHiddenUntil() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(ACTIVITY_REMINDER_HIDDEN_UNTIL_KEY);
+}
 
 function getUserInitials(user: AuthUser | null) {
   const source = String(user?.name || user?.email || user?.username || "").trim();
@@ -19,8 +63,13 @@ function getUserInitials(user: AuthUser | null) {
 }
 
 function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) {
-  const { pathname } = useLocation();
-  const active = pathname === to;
+  const { pathname, search } = useLocation();
+  const [targetPathname, targetSearch = ""] = to.split("?");
+  const currentParams = new URLSearchParams(search);
+  const targetParams = new URLSearchParams(targetSearch);
+  const currentTab = currentParams.get("tab");
+  const targetTab = targetParams.get("tab");
+  const active = targetTab ? pathname === targetPathname && currentTab === targetTab : pathname === targetPathname;
 
   return (
     <Link to={to} className={`nav-link ${active ? "nav-link-active" : ""}`}>
@@ -32,7 +81,12 @@ function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) 
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { isDark, toggleTheme } = useTheme();
+  const { pathname } = useLocation();
+  const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(() => getStoredUser());
+  const [activityReminder, setActivityReminder] = useState<{ date: string; count: number; visible: boolean } | null>(null);
+  const [acknowledgedDate, setAcknowledgedDate] = useState(() => getStoredReminderAckDate());
+  const reminderCheckInFlight = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -61,6 +115,75 @@ export default function AppLayout({ children }: { children: ReactNode }) {
   }, []);
 
   const initials = getUserInitials(currentUser);
+
+  useEffect(() => {
+    if (pathname === "/atividades") {
+      const today = todayDateInput();
+      setStoredReminderAckDate(today);
+      clearStoredReminderHiddenUntil();
+      setAcknowledgedDate(today);
+      setActivityReminder(null);
+      return;
+    }
+
+    if (!getToken()) {
+      setActivityReminder(null);
+      return;
+    }
+
+    let active = true;
+
+    const checkDailyActivities = async () => {
+      if (!active || reminderCheckInFlight.current) return;
+      const today = todayDateInput();
+      const storedAckDate = getStoredReminderAckDate();
+      const hiddenUntil = getStoredReminderHiddenUntil();
+
+      if (storedAckDate === today) {
+        if (active) {
+          setAcknowledgedDate(storedAckDate);
+          setActivityReminder(null);
+        }
+        return;
+      }
+
+      if (hiddenUntil > Date.now()) {
+        if (active) {
+          setActivityReminder((prev) => (prev ? { ...prev, visible: false } : null));
+        }
+        return;
+      }
+
+      reminderCheckInFlight.current = true;
+
+      try {
+        const items = await listFollowUps({ date: today });
+        if (!active) return;
+
+        if ((items || []).length > 0) {
+          setActivityReminder({
+            date: today,
+            count: items.length,
+            visible: true,
+          });
+        } else {
+          setActivityReminder(null);
+        }
+      } catch {
+        if (!active) return;
+      } finally {
+        reminderCheckInFlight.current = false;
+      }
+    };
+
+    void checkDailyActivities();
+    const timer = window.setInterval(checkDailyActivities, ACTIVITY_REMINDER_INTERVAL_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [acknowledgedDate, pathname]);
 
   return (
     <div className="app-shell relative min-h-screen overflow-hidden">
@@ -125,7 +248,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
           <nav className="nav-strip mt-3 flex items-center gap-1 overflow-x-auto pb-1">
             <NavItem to="/" label="Dashboard" Icon={LayoutGrid} />
             <NavItem to="/consultas" label="Consultas" Icon={Search} />
+            <NavItem to="/graficos" label="Graficos" Icon={BarChart3} />
             <NavItem to="/modelagem" label="Follow up" Icon={Database} />
+            <NavItem to="/atividades" label="Atividades" Icon={Activity} />
             <NavItem to="/insersao" label="Insercao" Icon={PlusSquare} />
             <NavItem to="/edicao" label="Edicao" Icon={FileEdit} />
             <NavItem to="/import" label="Importar" Icon={Upload} />
@@ -143,6 +268,67 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       >
         {children}
       </motion.main>
+
+      <AnimatePresence>
+        {activityReminder?.visible && pathname !== "/atividades" ? (
+          <motion.div
+            key={`activity-reminder-${activityReminder.date}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="reminder-overlay fixed inset-0 z-[70] flex items-end justify-center p-4 sm:items-center"
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 12, scale: 0.98 }}
+              transition={{ duration: 0.18 }}
+              className="reminder-modal w-full max-w-[480px]"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="activity-reminder-title"
+            >
+              <div className="reminder-kicker">
+                <BellRing size={15} />
+                Aviso de atividades
+              </div>
+
+              <h2 id="activity-reminder-title" className="reminder-title">
+                Existe atividade programada para hoje
+              </h2>
+
+              <p className="reminder-text">
+                Foram encontradas <strong>{activityReminder.count}</strong> atividade(s) para{" "}
+                {formatReminderDate(activityReminder.date)}.
+                O lembrete volta em 2 minutos enquanto a tela de <strong>Atividades</strong> nao for aberta.
+              </p>
+
+              <div className="reminder-actions">
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    navigate("/atividades");
+                  }}
+                  type="button"
+                >
+                  <Activity size={15} />
+                  Abrir atividades
+                </button>
+                <button
+                  className="btn"
+                  onClick={() => {
+                    setActivityReminder((prev) => (prev ? { ...prev, visible: false } : null));
+                    setStoredReminderHiddenUntil(Date.now() + ACTIVITY_REMINDER_INTERVAL_MS);
+                  }}
+                  type="button"
+                >
+                  Lembrar depois
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </div>
   );
 }

@@ -175,6 +175,48 @@ export type GridRow = {
   updatedAt: string;
 };
 
+export type Contrato = {
+  numero: number;
+  ordemDataEntrega: number | null;
+  followUp: string | null;
+  grupo: string | null;
+  convite: string | null;
+  ano: number | null;
+  entrega: string | null;
+  ultimoContato: string | null;
+  nomeProjetoLocal: string | null;
+  cliente: string | null;
+  tipoServico: string | null;
+  resp: string | null;
+  status: string | null;
+  contatos: string | null;
+  valor: number | string | null;
+  prazoMes: number | null;
+  go: string | null;
+  observacoes: string | null;
+  certidao: string | null;
+  mediaMensal: number | string | null;
+  total: number | string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ContratoListResponse = {
+  total: number;
+  page: number;
+  pageSize: number;
+  items: Contrato[];
+};
+
+export type ListContratosParams = {
+  search?: string;
+  status?: string;
+  cliente?: string;
+  ano?: number;
+  page?: number;
+  pageSize?: number;
+};
+
 export async function fetchGrid(
   params: { sheet?: string; page?: number; pageSize?: number; sortKey?: string; sortDir?: "asc" | "desc" } = {}
 ) {
@@ -278,6 +320,18 @@ export async function searchGrid(
   }>(`/grid/search?${qs.toString()}`);
 }
 
+export async function listContratos(params: ListContratosParams = {}) {
+  const qs = new URLSearchParams();
+  if (params.search) qs.set("search", params.search);
+  if (params.status) qs.set("status", params.status);
+  if (params.cliente) qs.set("cliente", params.cliente);
+  if (typeof params.ano === "number") qs.set("ano", String(params.ano));
+  if (typeof params.page === "number") qs.set("page", String(params.page));
+  if (typeof params.pageSize === "number") qs.set("pageSize", String(params.pageSize));
+  const q = qs.toString();
+  return http<ContratoListResponse>(`/contratos${q ? `?${q}` : ""}`);
+}
+
 // ---------- Modelagem ----------
 export type Cliente = {
   id: number;
@@ -348,6 +402,7 @@ export type ListFollowUpsParams = {
   gpId?: number;
   gpChave?: string;
   status?: string;
+  date?: string;
 };
 
 export type SaveFollowUpPayload = {
@@ -414,6 +469,7 @@ export async function listFollowUps(params: ListFollowUpsParams = {}) {
   if (typeof params.gpId === "number") qs.set("gpId", String(params.gpId));
   if (params.gpChave) qs.set("gpChave", params.gpChave);
   if (params.status) qs.set("status", params.status);
+  if (params.date) qs.set("date", params.date);
   const q = qs.toString();
   return http<FollowUp[]>(`/followups${q ? `?${q}` : ""}`);
 }

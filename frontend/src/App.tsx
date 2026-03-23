@@ -9,6 +9,8 @@ import AppLayout from "./components/AppLayout";
 import Insersao from "./pages/Insersao";
 import Edicao from "./pages/Edicao";
 import Modelagem from "./pages/Modelagem";
+import Atividades from "./pages/Atividades";
+import Graficos from "./pages/Graficos";
 import { ThemeProvider } from "./components/ThemeProvider";
 import Usuario from "./pages/Usuario";
 
@@ -31,10 +33,12 @@ function AnimatedRoutes() {
 
         <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
         <Route path="/consultas" element={<PrivateRoute><Consultas /></PrivateRoute>} />
+        <Route path="/graficos" element={<PrivateRoute><Graficos /></PrivateRoute>} />
         <Route path="/import" element={<PrivateRoute><ImportPage /></PrivateRoute>} />
         <Route path="/insersao" element={<PrivateRoute><Insersao /></PrivateRoute>} />
         <Route path="/edicao" element={<PrivateRoute><Edicao /></PrivateRoute>} />
         <Route path="/modelagem" element={<PrivateRoute><Modelagem /></PrivateRoute>} />
+        <Route path="/atividades" element={<PrivateRoute><Atividades /></PrivateRoute>} />
         <Route path="/usuario" element={<PrivateRoute><Usuario /></PrivateRoute>} />
 
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Database } from "lucide-react";
+import { useSearchParams } from "react-router-dom";
 import {
   createCliente,
   createFollowUp,
@@ -101,6 +102,11 @@ function isValidChave(value: string) {
   return /^[A-Z0-9]{4}-\d{2}$/.test(value) || /^\d+$/.test(value);
 }
 
+function getTabFromParam(value: string | null): TabId {
+  if (value === "gps" || value === "followups") return value;
+  return "clientes";
+}
+
 function TabButton({
   id,
   label,
@@ -121,6 +127,9 @@ function TabButton({
 }
 
 export default function Modelagem() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = getTabFromParam(searchParams.get("tab"));
+  const gpIdFromUrl = Number(searchParams.get("gpId"));
   const container = {
     hidden: { opacity: 1 },
     show: { opacity: 1, transition: { staggerChildren: 0.06 } },
@@ -130,7 +139,7 @@ export default function Modelagem() {
     show: { opacity: 1, y: 0, transition: { duration: 0.25 } },
   };
 
-  const [tab, setTab] = useState<TabId>("clientes");
+  const [tab, setTab] = useState<TabId>(tabFromUrl);
   const [toast, setToast] = useState<ToastMsg | null>(null);
 
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -180,6 +189,19 @@ export default function Modelagem() {
 
   function notify(type: ToastMsg["type"], title: string, text: string) {
     setToast({ id: safeUUID(), type, title, text });
+  }
+
+  function setActiveTab(nextTab: TabId) {
+    setTab(nextTab);
+    const nextParams = new URLSearchParams(searchParams);
+    if (nextTab === "clientes") {
+      nextParams.delete("tab");
+      nextParams.delete("gpId");
+    } else {
+      nextParams.set("tab", nextTab);
+      if (nextTab !== "followups") nextParams.delete("gpId");
+    }
+    setSearchParams(nextParams, { replace: true });
   }
 
   async function loadClientes() {
@@ -268,6 +290,17 @@ export default function Modelagem() {
   useEffect(() => {
     loadFollowUps();
   }, [selectedGpId, followFilterStatus]);
+
+  useEffect(() => {
+    setTab(tabFromUrl);
+  }, [tabFromUrl]);
+
+  useEffect(() => {
+    if (tabFromUrl !== "followups") return;
+    if (!Number.isInteger(gpIdFromUrl) || gpIdFromUrl <= 0) return;
+    setSelectedGpId(gpIdFromUrl);
+    setFollowUpForm((prev) => ({ ...prev, gpId: String(gpIdFromUrl) }));
+  }, [gpIdFromUrl, tabFromUrl]);
 
   async function handleSearchByChave() {
     const chave = normalizeChave(searchChave);
@@ -450,7 +483,7 @@ export default function Modelagem() {
       tipoServico: gp.tipoServico || "",
       descricao: gp.descricao || "",
     });
-    setTab("gps");
+    setActiveTab("gps");
   }
 
   async function handleDeleteGp(gp: Gp) {
@@ -532,7 +565,7 @@ export default function Modelagem() {
       valor: row.valor == null ? "" : String(row.valor),
     });
     setSelectedGpId(row.gpId);
-    setTab("followups");
+    setActiveTab("followups");
   }
 
   async function handleDeleteFollowUp(row: FollowUp) {
@@ -668,7 +701,7 @@ export default function Modelagem() {
                   className="btn"
                   onClick={() => {
                     handleEditGp(foundGpByChave);
-                    setTab("gps");
+                    setActiveTab("gps");
                   }}
                   type="button"
                 >
@@ -677,7 +710,7 @@ export default function Modelagem() {
                 <button
                   className="btn"
                   onClick={() => {
-                    setTab("followups");
+                    setActiveTab("followups");
                     setSelectedGpId(foundGpByChave.id);
                     setFollowUpForm((p) => ({ ...p, gpId: String(foundGpByChave.id) }));
                   }}
@@ -767,7 +800,7 @@ export default function Modelagem() {
                                 className="btn"
                                 onClick={() => {
                                   handleEditGp(g);
-                                  setTab("gps");
+                                  setActiveTab("gps");
                                 }}
                                 type="button"
                               >
@@ -776,7 +809,7 @@ export default function Modelagem() {
                               <button
                                 className="btn"
                                 onClick={() => {
-                                  setTab("followups");
+                                  setActiveTab("followups");
                                   setSelectedGpId(g.id);
                                   setFollowUpForm((p) => ({ ...p, gpId: String(g.id) }));
                                 }}
@@ -835,9 +868,9 @@ export default function Modelagem() {
       </motion.div>
 
       <motion.div className="panel-soft flex items-center gap-2 flex-wrap" variants={item}>
-        <TabButton id="clientes" label="Clientes" activeTab={tab} onClick={setTab} />
-        <TabButton id="gps" label="GPs" activeTab={tab} onClick={setTab} />
-        <TabButton id="followups" label="FollowUps" activeTab={tab} onClick={setTab} />
+        <TabButton id="clientes" label="Clientes" activeTab={tab} onClick={setActiveTab} />
+        <TabButton id="gps" label="GPs" activeTab={tab} onClick={setActiveTab} />
+        <TabButton id="followups" label="FollowUps" activeTab={tab} onClick={setActiveTab} />
         <span className="badge ml-auto">
           GPs: {gpsTotal} | FollowUps: {followUps.length}
         </span>
@@ -1075,7 +1108,7 @@ export default function Modelagem() {
                               className="btn"
                               onClick={() => {
                                 setSelectedGpId(g.id);
-                                setTab("followups");
+                                setActiveTab("followups");
                                 setFollowUpForm((p) => ({ ...p, gpId: String(g.id) }));
                               }}
                               type="button"
