@@ -287,6 +287,55 @@ function pickNumeroColumnKey(columns: Array<{ key: string; label: string }>) {
   return null;
 }
 
+function buildBroadGridSearchWhere(sheet: string, query: string): Prisma.GridRowWhereInput {
+  return {
+    sheet,
+    searchText: { contains: query, mode: "insensitive" },
+  };
+}
+
+function buildExactNumeroGridSearchWhere(sheet: string, numeroKey: string, query: string): Prisma.GridRowWhereInput {
+  const trimmed = String(query ?? "").trim();
+  const stringCandidates = new Set(
+    [trimmed, normalizeGpChave(trimmed), trimmed.toLowerCase()].filter((value) => value.length > 0)
+  );
+
+  const filters: Prisma.GridRowWhereInput[] = Array.from(stringCandidates).map((value) => ({
+    data: {
+      path: [numeroKey],
+      equals: value,
+    },
+  }));
+
+  if (/^\d+$/.test(trimmed)) {
+    const numericValue = Number(trimmed);
+    if (Number.isFinite(numericValue)) {
+      filters.push({
+        data: {
+          path: [numeroKey],
+          equals: numericValue,
+        },
+      });
+    }
+  }
+
+  return {
+    sheet,
+    OR: filters,
+  };
+}
+
+function shouldTryExactNumeroSearch(query: string, mode: string) {
+  if (mode === "exactNumero") return true;
+  if (mode !== "smart") return false;
+
+  const normalized = normalizeGpChave(query);
+  if (!isGpChaveValid(normalized)) return false;
+  if (/^\d+$/.test(normalized) && normalized.length < 4) return false;
+
+  return true;
+}
+
 function toIntFromGrid(v: unknown) {
   const text = sanitizeGridValue(v);
   if (!text) return null;
@@ -826,36 +875,51 @@ router.get("/grid/summary", authMiddleware, async (req, res) => {
 router.get("/grid/search", authMiddleware, async (req, res) => {
   const q = String(req.query.q || "").trim();
   const sheet = String(req.query.sheet || "CONTRATOS");
+  const mode = String(req.query.mode || "broad");
 
   const page = Math.max(Number(req.query.page || 1), 1);
   const pageSize = Math.min(Math.max(Number(req.query.pageSize || 50), 1), 200);
   const skip = (page - 1) * pageSize;
 
   if (!q || q.length < 2) {
-    return res.json({ total: 0, page, pageSize, columns: [], items: [] });
+    return res.json({ total: 0, page, pageSize, columns: [], items: [], matchMode: "broad" });
   }
 
-  const where: any = {
-    sheet,
-    searchText: { contains: q, mode: "insensitive" },
-  };
+  const allColumns = await prisma.gridColumn.findMany({ orderBy: { order: "asc" } });
+  const visibleColumns = allColumns.filter((column) => !column.hidden);
+  const numeroKey = pickNumeroColumnKey(allColumns);
 
-  const [total, items, columns] = await Promise.all([
-    prisma.gridRow.count({ where }),
+  let where: Prisma.GridRowWhereInput = buildBroadGridSearchWhere(sheet, q);
+  let total: number | null = null;
+  let matchMode: "broad" | "exactNumero" = "broad";
+
+  if (numeroKey && shouldTryExactNumeroSearch(q, mode)) {
+    const exactWhere = buildExactNumeroGridSearchWhere(sheet, numeroKey, q);
+    const exactTotal = await prisma.gridRow.count({ where: exactWhere });
+
+    if (exactTotal > 0 || mode === "exactNumero") {
+      where = exactWhere;
+      total = exactTotal;
+      matchMode = "exactNumero";
+    }
+  }
+
+  const [resolvedTotal, items] = await Promise.all([
+    total === null ? prisma.gridRow.count({ where }) : Promise.resolve(total),
     prisma.gridRow.findMany({ where, orderBy: { id: "desc" }, skip, take: pageSize }),
-    prisma.gridColumn.findMany({ where: { hidden: false }, orderBy: { order: "asc" } }),
   ]);
 
   // evita crash de BigInt em JSON
-  const safeColumns = columns.map((c: any) => ({ ...c, id: c.id?.toString?.() ?? c.id }));
+  const safeColumns = visibleColumns.map((c: any) => ({ ...c, id: c.id?.toString?.() ?? c.id }));
   const safeItems = items.map((r: any) => ({ ...r, id: r.id?.toString?.() ?? r.id }));
 
   res.json({
-    total,
+    total: resolvedTotal,
     page,
     pageSize,
     columns: safeColumns,
     items: safeItems,
+    matchMode,
   });
 });
 

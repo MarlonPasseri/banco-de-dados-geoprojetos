@@ -12,6 +12,12 @@ function fmt(v: any) {
   return String(v);
 }
 
+function hasVisibleValue(v: any) {
+  if (v === null || v === undefined) return false;
+  const text = String(v).trim();
+  return text !== "" && text !== "-";
+}
+
 function norm(s: string) {
   return String(s || "")
     .normalize("NFD")
@@ -22,6 +28,13 @@ function norm(s: string) {
 
 function normalizeLoose(s: string) {
   return norm(s).replace(/[^a-z0-9]/g, "");
+}
+
+function isGpLikeQuery(value: string) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return false;
+  if (/^[a-z0-9]{4}-\d{2}$/i.test(trimmed)) return true;
+  return /^\d{4,}$/.test(trimmed);
 }
 
 function findNumeroKey(columns: GridColumn[]) {
@@ -58,13 +71,20 @@ export default function Consultas() {
   const [columns, setColumns] = useState<GridColumn[]>([]);
   const [items, setItems] = useState<GridRow[]>([]);
   const [total, setTotal] = useState(0);
+  const [matchMode, setMatchMode] = useState<"broad" | "exactNumero">("broad");
 
   const [page, setPage] = useState(1);
   const pageSize = 50;
 
   const query = useMemo(() => q.trim(), [q]);
   const canSearch = query.length >= 2;
+  const isGpSearch = useMemo(() => isGpLikeQuery(query), [query]);
+  const searchMode = useMemo<"broad" | "smart">(() => (isGpSearch ? "smart" : "broad"), [isGpSearch]);
   const numeroKey = useMemo(() => findNumeroKey(columns), [columns]);
+  const resultColumns = useMemo(
+    () => columns.filter((column) => items.some((row) => hasVisibleValue(row.data?.[column.key]))),
+    [columns, items]
+  );
 
   useEffect(() => setPage(1), [query, sheet]);
 
@@ -75,6 +95,7 @@ export default function Consultas() {
       setItems([]);
       setColumns([]);
       setTotal(0);
+      setMatchMode("broad");
       setLoading(false);
       return;
     }
@@ -82,12 +103,13 @@ export default function Consultas() {
     const t = setTimeout(async () => {
       setLoading(true);
       try {
-        const r = await searchGrid(query, sheet, page, pageSize);
+        const r = await searchGrid(query, sheet, page, pageSize, searchMode);
         if (!alive) return;
 
         setColumns(r.columns || []);
         setItems(r.items || []);
         setTotal(r.total || 0);
+        setMatchMode(r.matchMode || "broad");
       } catch (e: any) {
         if (!alive) return;
         setToast({
@@ -99,6 +121,7 @@ export default function Consultas() {
         setItems([]);
         setColumns([]);
         setTotal(0);
+        setMatchMode("broad");
       } finally {
         if (alive) setLoading(false);
       }
@@ -108,7 +131,7 @@ export default function Consultas() {
       alive = false;
       clearTimeout(t);
     };
-  }, [canSearch, query, sheet, page]);
+  }, [canSearch, page, query, searchMode, sheet]);
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
@@ -128,11 +151,16 @@ export default function Consultas() {
             <Search size={22} />
             Consultas
           </h1>
-          <p className="page-desc">Pesquise no banco inteiro. Aqui aparecem apenas resultados da busca.</p>
+          <p className="page-desc">Pesquise no banco inteiro. Quando o termo parecer uma GP, a busca prioriza o numero exato.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="badge">Aba: {sheet}</span>
           <span className="badge">Resultados: {total}</span>
+          {canSearch && isGpSearch && !loading && (
+            <span className="badge">
+              {matchMode === "exactNumero" ? "Busca por GP exata" : "Sem GP exata, mostrando aproximados"}
+            </span>
+          )}
         </div>
       </motion.div>
 
@@ -151,12 +179,14 @@ export default function Consultas() {
               onChange={(e) => setQ(e.target.value)}
               placeholder="Digite (min. 2 caracteres)..."
             />
-            <p className="text-xs text-zinc-500">A busca procura em todas as colunas.</p>
+            <p className="text-xs text-zinc-500">
+              Para GP, a busca tenta primeiro o numero exato. Para outros termos, pesquisa em todas as colunas.
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center justify-between gap-3">
-          <div className="text-sm text-zinc-600">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-600">
             {!canSearch ? (
               <span className="badge">Digite algo para comecar</span>
             ) : loading ? (
@@ -164,17 +194,18 @@ export default function Consultas() {
             ) : (
               <span className="badge">Resultados: {total}</span>
             )}
+            {!loading && items.length > 0 && <span className="badge">Colunas com dados: {resultColumns.length}</span>}
           </div>
 
           {canSearch && total > 0 && (
-            <div className="flex items-center gap-2">
-              <button className="btn" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+              <button className="btn flex-1 sm:flex-none" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>
                 Anterior
               </button>
               <span className="text-sm text-zinc-600">
                 Pagina {page} / {totalPages}
               </span>
-              <button className="btn" disabled={page >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>
+              <button className="btn flex-1 sm:flex-none" disabled={page >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>
                 Proxima
               </button>
             </div>
@@ -194,7 +225,7 @@ export default function Consultas() {
           <div className="overflow-auto" style={{ maxHeight: "70vh" }}>
             <table className="min-w-[1200px] w-full text-sm">
               <tbody>
-                <TableSkeletonRows cols={Math.max(columns.length, 5)} rows={7} />
+                <TableSkeletonRows cols={Math.max(resultColumns.length + 1, 5)} rows={7} />
               </tbody>
             </table>
           </div>
@@ -210,7 +241,7 @@ export default function Consultas() {
               <thead className="sticky top-0 z-10 border-b bg-white">
                 <tr>
                   <th className="whitespace-nowrap px-3 py-2 text-left">Acao</th>
-                  {columns.map((c) => (
+                  {resultColumns.map((c) => (
                     <th key={c.key} className="whitespace-nowrap px-3 py-2 text-left">
                       {c.label}
                     </th>
@@ -227,7 +258,7 @@ export default function Consultas() {
                         Editar
                       </button>
                     </td>
-                    {columns.map((c) => (
+                    {resultColumns.map((c) => (
                       <td key={c.key} className="whitespace-nowrap px-3 py-2">
                         {fmt(r.data?.[c.key])}
                       </td>

@@ -226,9 +226,9 @@ export default function Usuario() {
 
       <motion.div className="page-hero" variants={item}>
         <div className="flex items-center gap-4">
-          <div className="flex h-20 w-20 items-center justify-center overflow-hidden rounded-full border border-white/70 bg-zinc-900 text-xl font-semibold text-white shadow-sm">
+          <div className="profile-chip profile-chip-lg">
             {avatarUrl ? (
-              <img src={avatarUrl} alt="Foto do usuario" className="h-full w-full object-cover" />
+              <img src={avatarUrl} alt="Foto do usuario" />
             ) : (
               <span>{avatarInitials}</span>
             )}
@@ -253,13 +253,13 @@ export default function Usuario() {
 
       <motion.div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.1fr_0.9fr]" variants={item}>
         <section className="panel-soft space-y-4">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="heading text-xl font-semibold text-zinc-900">Perfil</h2>
               <p className="text-sm text-zinc-500">Informacoes basicas da sua conta.</p>
             </div>
             <button
-              className="btn btn-primary"
+              className="btn btn-primary w-full sm:w-auto"
               disabled={!canSaveProfile || savingProfile || loading || processingAvatar}
               onClick={onSaveProfile}
             >
@@ -267,12 +267,12 @@ export default function Usuario() {
             </button>
           </div>
 
-          <div className="rounded-3xl border border-zinc-200/80 bg-zinc-50/80 p-4">
+          <div className="surface-inset p-4">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="flex items-center gap-4">
-                <div className="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-900 text-2xl font-semibold text-white shadow-sm">
+                <div className="profile-chip profile-chip-xl">
                   {avatarUrl ? (
-                    <img src={avatarUrl} alt="Preview da foto" className="h-full w-full object-cover" />
+                    <img src={avatarUrl} alt="Preview da foto" />
                   ) : (
                     <span>{avatarInitials}</span>
                   )}

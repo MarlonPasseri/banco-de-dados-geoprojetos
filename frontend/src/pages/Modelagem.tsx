@@ -186,6 +186,17 @@ export default function Modelagem() {
   }, [gps, foundGpByChave, foundClienteGps]);
 
   const selectedGp = useMemo(() => gpOptions.find((g) => g.id === selectedGpId) || null, [gpOptions, selectedGpId]);
+  const searchResultGps = useMemo(() => (foundGpByChave ? [foundGpByChave] : foundClienteGps), [foundGpByChave, foundClienteGps]);
+  const searchResultFollowUps = useMemo(
+    () => (foundGpByChave ? foundFollowUps : foundClienteFollowUps),
+    [foundClienteFollowUps, foundFollowUps, foundGpByChave]
+  );
+  const hasSearchResults = Boolean(foundGpByChave) || foundClienteGps.length > 0;
+  const searchResultTitle = foundGpByChave
+    ? `Follow-ups do GP ${foundGpByChave.chave}`
+    : foundClienteNome
+      ? `Follow-ups do cliente ${foundClienteNome}`
+      : "Follow-ups encontrados";
 
   function notify(type: ToastMsg["type"], title: string, text: string) {
     setToast({ id: safeUUID(), type, title, text });
@@ -305,7 +316,7 @@ export default function Modelagem() {
   async function handleSearchByChave() {
     const chave = normalizeChave(searchChave);
     if (!isValidChave(chave)) {
-      notify("error", "Validacao", "Informe a chave no formato XXXX-NN ou o N.Ã‚Âº da planilha.");
+      notify("error", "Validacao", "Informe a chave no formato XXXX-NN ou o numero da planilha.");
       return;
     }
 
@@ -329,7 +340,8 @@ export default function Modelagem() {
       setFoundClienteGps([]);
       setFoundClienteFollowUps([]);
       setSelectedGpId(exact.id);
-      setFollowUpForm((prev) => ({ ...prev, gpId: String(exact.id) }));
+      setFollowUpEditId(null);
+      setFollowUpForm({ ...emptyFollowUpForm, gpId: String(exact.id) });
       await loadFollowUpsForBusca(exact.id);
       notify("success", "Busca", `GP ${exact.chave} encontrado.`);
     } catch (e: any) {
@@ -366,6 +378,14 @@ export default function Modelagem() {
       setFoundClienteGps(items);
       setFoundGpByChave(null);
       setFoundFollowUps([]);
+      setFollowUpEditId(null);
+      if (items.length === 1) {
+        setSelectedGpId(items[0].id);
+        setFollowUpForm({ ...emptyFollowUpForm, gpId: String(items[0].id) });
+      } else {
+        setSelectedGpId(null);
+        setFollowUpForm(emptyFollowUpForm);
+      }
       await loadFollowUpsForCliente(items);
       notify("success", "Busca", `${items.length} GP(s) encontrados para ${clienteNome}.`);
     } catch (e: any) {
@@ -383,6 +403,9 @@ export default function Modelagem() {
     setFoundClienteNome("");
     setFoundClienteGps([]);
     setFoundClienteFollowUps([]);
+    setSelectedGpId(null);
+    setFollowUpEditId(null);
+    setFollowUpForm(emptyFollowUpForm);
   }
 
   async function handleCreateCliente() {
@@ -409,7 +432,7 @@ export default function Modelagem() {
   async function handleSaveGp() {
     const chave = gpForm.chave.trim().toUpperCase();
     if (!chave) {
-      notify("error", "Validacao", "Informe a chave do GP (XXXX-NN ou N.Ã‚Âº da planilha).");
+      notify("error", "Validacao", "Informe a chave do GP (XXXX-NN ou numero da planilha).");
       return;
     }
 
@@ -565,7 +588,6 @@ export default function Modelagem() {
       valor: row.valor == null ? "" : String(row.valor),
     });
     setSelectedGpId(row.gpId);
-    setActiveTab("followups");
   }
 
   async function handleDeleteFollowUp(row: FollowUp) {
@@ -606,7 +628,7 @@ export default function Modelagem() {
         </div>
       </motion.div>
 
-      <motion.div className="grid grid-cols-1 xl:grid-cols-[340px_1fr] gap-4" variants={item}>
+      <motion.div className="max-w-xl" variants={item}>
         <div className="panel-soft space-y-3">
           <div className="text-xs uppercase tracking-wide text-zinc-500">Filtro de busca</div>
           <div className="text-sm text-zinc-600">Escolha o tipo de busca</div>
@@ -647,16 +669,16 @@ export default function Modelagem() {
               }}
             />
           )}
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
-              className="btn btn-primary"
+              className="btn btn-primary flex-1 sm:flex-none"
               onClick={searchTipo === "chave" ? handleSearchByChave : handleSearchByCliente}
               type="button"
               disabled={loadingBusca}
             >
               {loadingBusca ? "Buscando..." : searchTipo === "chave" ? "Buscar chave" : "Buscar cliente"}
             </button>
-            <button className="btn" onClick={clearSearchByChave} type="button" disabled={loadingBusca}>
+            <button className="btn flex-1 sm:flex-none" onClick={clearSearchByChave} type="button" disabled={loadingBusca}>
               Limpar
             </button>
           </div>
@@ -664,268 +686,232 @@ export default function Modelagem() {
             A busca personalizada localiza o GP, o Cliente e os Follow-UPs vinculados.
           </p>
         </div>
+      </motion.div>
 
-        <div className="panel-soft space-y-3">
-          <div className="text-xs uppercase tracking-wide text-zinc-500">Tela de busca personalizada</div>
-          {!foundGpByChave && foundClienteGps.length === 0 ? (
-            <EmptyState
-              compact
-              title="Busque por chave GP ou nome do cliente"
-              text="Ao encontrar resultado, o sistema exibe todos os dados relacionados."
-            />
-          ) : foundGpByChave ? (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                <div className="border rounded-xl p-3 bg-white">
-                  <div className="text-xs text-zinc-500">GP</div>
-                  <div className="font-semibold">{foundGpByChave.chave}</div>
-                  <div className="text-zinc-600">Grupo: {foundGpByChave.grupo || "-"}</div>
-                  <div className="text-zinc-600">Ano: {foundGpByChave.ano ?? "-"}</div>
-                </div>
-                <div className="border rounded-xl p-3 bg-white">
-                  <div className="text-xs text-zinc-500">Cliente</div>
-                  <div className="font-semibold">{foundGpByChave.cliente?.nome || "Sem cliente"}</div>
-                  <div className="text-zinc-600">OS: {foundGpByChave.os ? "Sim" : "Nao"}</div>
-                  <div className="text-zinc-600">Aditivo: {foundGpByChave.aditivo ? "Sim" : "Nao"}</div>
-                </div>
-                <div className="border rounded-xl p-3 bg-white">
-                  <div className="text-xs text-zinc-500">Servico</div>
-                  <div className="font-semibold">{foundGpByChave.tipoServico || "-"}</div>
-                  <div className="text-zinc-600 line-clamp-2">Descricao: {foundGpByChave.descricao || "-"}</div>
-                  <div className="text-zinc-600">Follow-UPs: {foundFollowUps.length}</div>
+      {hasSearchResults && (
+        <motion.div className="space-y-4" variants={item}>
+          <div className="panel-soft space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-zinc-500">Edicao de follow-up</div>
+                <div className="text-sm text-zinc-600">
+                  {selectedGp ? `GP selecionado: ${selectedGp.chave}` : "Selecione um GP da busca para criar ou editar follow-ups."}
                 </div>
               </div>
+              <span className="badge">Resultados: {searchResultFollowUps.length}</span>
+            </div>
 
-              <div className="flex gap-2">
-                <button
-                  className="btn"
-                  onClick={() => {
-                    handleEditGp(foundGpByChave);
-                    setActiveTab("gps");
-                  }}
-                  type="button"
-                >
-                  Editar GP
-                </button>
-                <button
-                  className="btn"
-                  onClick={() => {
-                    setActiveTab("followups");
-                    setSelectedGpId(foundGpByChave.id);
-                    setFollowUpForm((p) => ({ ...p, gpId: String(foundGpByChave.id) }));
-                  }}
-                  type="button"
-                >
-                  Gerenciar Follow-UP
-                </button>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <select
+                className="input"
+                value={followUpForm.gpId}
+                onChange={(e) => {
+                  const gpId = e.target.value;
+                  setFollowUpForm((p) => ({ ...p, gpId }));
+                  setSelectedGpId(gpId ? Number(gpId) : null);
+                }}
+              >
+                <option value="">Selecione GP</option>
+                {searchResultGps.map((g) => (
+                  <option key={g.id} value={g.id}>
+                    {g.chave} {g.grupo ? `- ${g.grupo}` : ""}
+                  </option>
+                ))}
+              </select>
+              <input
+                className="input"
+                type="date"
+                value={followUpForm.convite}
+                onChange={(e) => setFollowUpForm((p) => ({ ...p, convite: e.target.value }))}
+              />
+              <input
+                className="input"
+                type="date"
+                value={followUpForm.entrega}
+                onChange={(e) => setFollowUpForm((p) => ({ ...p, entrega: e.target.value }))}
+              />
+              <input
+                className="input"
+                type="date"
+                value={followUpForm.ultimoContato}
+                onChange={(e) => setFollowUpForm((p) => ({ ...p, ultimoContato: e.target.value }))}
+              />
+              <input
+                className="input"
+                value={followUpForm.status}
+                onChange={(e) => setFollowUpForm((p) => ({ ...p, status: e.target.value }))}
+                placeholder="Status"
+              />
+              <input
+                className="input"
+                value={followUpForm.valor}
+                onChange={(e) => setFollowUpForm((p) => ({ ...p, valor: e.target.value }))}
+                placeholder="Valor"
+              />
+            </div>
 
-              <div className="table-shell">
-                <div className="overflow-auto" style={{ maxHeight: "240px" }}>
-                  <table className="min-w-[760px] w-full text-sm">
-                    <thead className="sticky top-0 bg-white z-10 border-b">
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-primary" onClick={handleSaveFollowUp} type="button">
+                {followUpEditId ? "Salvar edicao" : "Criar FollowUp"}
+              </button>
+              <button className="btn" onClick={() => resetFollowUpForm(true)} type="button">
+                Limpar
+              </button>
+            </div>
+          </div>
+
+          <div className="panel-soft space-y-3">
+            <div className="text-xs uppercase tracking-wide text-zinc-500">{searchResultTitle}</div>
+            <div className="table-shell">
+              <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
+                <table className="min-w-[960px] w-full text-sm">
+                  <thead className="sticky top-0 bg-white z-10 border-b">
+                    <tr>
+                      <th className="text-left py-2 px-3">GP</th>
+                      <th className="text-left py-2 px-3">Convite</th>
+                      <th className="text-left py-2 px-3">Entrega</th>
+                      <th className="text-left py-2 px-3">Ultimo contato</th>
+                      <th className="text-left py-2 px-3">Status</th>
+                      <th className="text-left py-2 px-3">Valor</th>
+                      <th className="text-left py-2 px-3">Acoes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {searchResultFollowUps.length === 0 ? (
                       <tr>
-                        <th className="text-left py-2 px-3">Convite</th>
-                        <th className="text-left py-2 px-3">Entrega</th>
-                        <th className="text-left py-2 px-3">Ultimo contato</th>
-                        <th className="text-left py-2 px-3">Status</th>
-                        <th className="text-left py-2 px-3">Valor</th>
+                        <td className="py-4 px-3" colSpan={7}>
+                          <EmptyState
+                            compact
+                            title="Nenhum follow-up encontrado"
+                            text={
+                              foundGpByChave
+                                ? "Este GP ainda nao possui follow-up cadastrado."
+                                : "Os GPs deste cliente ainda nao possuem follow-up."
+                            }
+                          />
+                        </td>
                       </tr>
-                    </thead>
-                    <tbody>
-                      {foundFollowUps.length === 0 ? (
-                        <tr>
-                          <td className="py-3 px-3 text-zinc-500" colSpan={5}>
-                            <EmptyState compact title="Nenhum follow-up" text="Este GP ainda nao possui follow-up cadastrado." />
-                          </td>
-                        </tr>
-                      ) : (
-                        foundFollowUps.map((f) => (
-                          <tr key={f.id} className="border-b hover:bg-zinc-50">
-                            <td className="py-2 px-3">{fmtDate(f.convite)}</td>
-                            <td className="py-2 px-3">{fmtDate(f.entrega)}</td>
-                            <td className="py-2 px-3">{fmtDate(f.ultimoContato)}</td>
-                            <td className="py-2 px-3">{f.status || "-"}</td>
-                            <td className="py-2 px-3">{fmtCurrency(f.valor)}</td>
-                          </tr>
-                        ))
-                      )}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                <div className="border rounded-xl p-3 bg-white">
-                  <div className="text-xs text-zinc-500">Cliente</div>
-                  <div className="font-semibold">{foundClienteNome || "-"}</div>
-                  <div className="text-zinc-600">Busca: {searchClienteNome || "-"}</div>
-                </div>
-                <div className="border rounded-xl p-3 bg-white">
-                  <div className="text-xs text-zinc-500">GPs vinculados</div>
-                  <div className="font-semibold">{foundClienteGps.length}</div>
-                  <div className="text-zinc-600">Registros relacionados ao cliente</div>
-                </div>
-                <div className="border rounded-xl p-3 bg-white">
-                  <div className="text-xs text-zinc-500">Follow-Ups</div>
-                  <div className="font-semibold">{foundClienteFollowUps.length}</div>
-                  <div className="text-zinc-600">Total consolidado dos GPs</div>
-                </div>
-              </div>
-
-              <div className="table-shell">
-                <div className="overflow-auto" style={{ maxHeight: "220px" }}>
-                  <table className="min-w-[760px] w-full text-sm">
-                    <thead className="sticky top-0 bg-white z-10 border-b">
-                      <tr>
-                        <th className="text-left py-2 px-3">GP</th>
-                        <th className="text-left py-2 px-3">Grupo</th>
-                        <th className="text-left py-2 px-3">Ano</th>
-                        <th className="text-left py-2 px-3">Follow-Ups</th>
-                        <th className="text-left py-2 px-3">Acoes</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {foundClienteGps.map((g) => (
-                        <tr key={g.id} className="border-b transition-colors">
-                          <td className="py-2 px-3 font-medium">{g.chave}</td>
-                          <td className="py-2 px-3">{g.grupo || "-"}</td>
-                          <td className="py-2 px-3">{g.ano ?? "-"}</td>
-                          <td className="py-2 px-3">{g._count?.followUps ?? 0}</td>
+                    ) : (
+                      searchResultFollowUps.map((f) => (
+                        <tr key={f.id} className="border-b transition-colors">
+                          <td className="py-2 px-3">{f.gp?.chave || f.gpId}</td>
+                          <td className="py-2 px-3">{fmtDate(f.convite)}</td>
+                          <td className="py-2 px-3">{fmtDate(f.entrega)}</td>
+                          <td className="py-2 px-3">{fmtDate(f.ultimoContato)}</td>
+                          <td className="py-2 px-3">{f.status || "-"}</td>
+                          <td className="py-2 px-3">{fmtCurrency(f.valor)}</td>
                           <td className="py-2 px-3">
-                            <div className="flex gap-2">
-                              <button
-                                className="btn"
-                                onClick={() => {
-                                  handleEditGp(g);
-                                  setActiveTab("gps");
-                                }}
-                                type="button"
-                              >
-                                Editar GP
+                            <div className="flex flex-wrap gap-2">
+                              <button className="btn" onClick={() => handleEditFollowUp(f)} type="button">
+                                Editar
                               </button>
-                              <button
-                                className="btn"
-                                onClick={() => {
-                                  setActiveTab("followups");
-                                  setSelectedGpId(g.id);
-                                  setFollowUpForm((p) => ({ ...p, gpId: String(g.id) }));
-                                }}
-                                type="button"
-                              >
-                                Follow-Ups
+                              <button className="btn" onClick={() => handleDeleteFollowUp(f)} type="button">
+                                Excluir
                               </button>
                             </div>
                           </td>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      ))
+                    )}
+                  </tbody>
+                </table>
               </div>
+            </div>
+          </div>
 
+          <div className="panel-soft space-y-3">
+            <div className="text-xs uppercase tracking-wide text-zinc-500">Tela de busca personalizada</div>
+            <div className="text-xs uppercase tracking-wide text-zinc-500">Resumo da busca</div>
+
+            {foundGpByChave ? (
               <div className="table-shell">
-                <div className="overflow-auto" style={{ maxHeight: "220px" }}>
-                  <table className="min-w-[820px] w-full text-sm">
+                <div className="overflow-auto">
+                  <table className="min-w-[560px] w-full table-fixed text-sm">
                     <thead className="sticky top-0 bg-white z-10 border-b">
                       <tr>
-                        <th className="text-left py-2 px-3">GP</th>
-                        <th className="text-left py-2 px-3">Convite</th>
-                        <th className="text-left py-2 px-3">Entrega</th>
-                        <th className="text-left py-2 px-3">Ultimo contato</th>
-                        <th className="text-left py-2 px-3">Status</th>
+                        <th className="text-left py-2 px-3">Campo</th>
                         <th className="text-left py-2 px-3">Valor</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {foundClienteFollowUps.length === 0 ? (
-                        <tr>
-                          <td className="py-3 px-3 text-zinc-500" colSpan={6}>
-                            <EmptyState compact title="Nenhum follow-up" text="Os GPs deste cliente ainda nao possuem follow-up." />
-                          </td>
-                        </tr>
-                      ) : (
-                        foundClienteFollowUps.map((f) => (
-                          <tr key={f.id} className="border-b transition-colors">
-                            <td className="py-2 px-3">{f.gp?.chave || f.gpId}</td>
-                            <td className="py-2 px-3">{fmtDate(f.convite)}</td>
-                            <td className="py-2 px-3">{fmtDate(f.entrega)}</td>
-                            <td className="py-2 px-3">{fmtDate(f.ultimoContato)}</td>
-                            <td className="py-2 px-3">{f.status || "-"}</td>
-                            <td className="py-2 px-3">{fmtCurrency(f.valor)}</td>
-                          </tr>
-                        ))
-                      )}
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">GP</td>
+                        <td className="py-2 px-3 break-words">{foundGpByChave.chave}</td>
+                      </tr>
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">Cliente</td>
+                        <td className="py-2 px-3 break-words">{foundGpByChave.cliente?.nome || "Sem cliente"}</td>
+                      </tr>
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">Grupo</td>
+                        <td className="py-2 px-3 break-words">{foundGpByChave.grupo || "-"}</td>
+                      </tr>
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">Ano</td>
+                        <td className="py-2 px-3">{foundGpByChave.ano ?? "-"}</td>
+                      </tr>
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">OS</td>
+                        <td className="py-2 px-3">{foundGpByChave.os ? "Sim" : "Nao"}</td>
+                      </tr>
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">Aditivo</td>
+                        <td className="py-2 px-3">{foundGpByChave.aditivo ? "Sim" : "Nao"}</td>
+                      </tr>
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">Servico</td>
+                        <td className="py-2 px-3 break-words">{foundGpByChave.tipoServico || "-"}</td>
+                      </tr>
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">Descricao</td>
+                        <td className="py-2 px-3 break-words whitespace-normal">{foundGpByChave.descricao || "-"}</td>
+                      </tr>
+                      <tr className="transition-colors">
+                        <td className="py-2 px-3 font-medium">Follow-Ups</td>
+                        <td className="py-2 px-3">{foundFollowUps.length}</td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
               </div>
-            </>
-          )}
-        </div>
-      </motion.div>
-
-      <motion.div className="panel-soft flex items-center gap-2 flex-wrap" variants={item}>
-        <TabButton id="clientes" label="Clientes" activeTab={tab} onClick={setActiveTab} />
-        <TabButton id="gps" label="GPs" activeTab={tab} onClick={setActiveTab} />
-        <TabButton id="followups" label="FollowUps" activeTab={tab} onClick={setActiveTab} />
-        <span className="badge ml-auto">
-          GPs: {gpsTotal} | FollowUps: {followUps.length}
-        </span>
-      </motion.div>
-
-      {tab === "clientes" && (
-        <motion.div className="panel-soft space-y-4" variants={item}>
-          <div className="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3">
-            <input
-              className="input"
-              value={novoCliente}
-              onChange={(e) => setNovoCliente(e.target.value)}
-              placeholder="Nome do cliente"
-            />
-            <button className="btn btn-primary" onClick={handleCreateCliente} type="button">
-              Criar cliente
-            </button>
-          </div>
-
-          <div className="table-shell">
-            <div className="overflow-auto" style={{ maxHeight: "60vh" }}>
-              <table className="w-full text-sm min-w-[520px]">
-                <thead className="sticky top-0 bg-white z-10 border-b">
-                  <tr>
-                    <th className="text-left py-2 px-3">ID</th>
-                    <th className="text-left py-2 px-3">Nome</th>
-                    <th className="text-left py-2 px-3">Qtd GPs</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {loadingClientes ? (
-                    <TableSkeletonRows cols={3} rows={5} />
-                  ) : clientes.length === 0 ? (
-                    <tr>
-                      <td className="py-4 px-3" colSpan={3}>
-                        <EmptyState compact title="Nenhum cliente cadastrado" text="Use o formulario acima para adicionar o primeiro cliente." />
-                      </td>
-                    </tr>
-                  ) : (
-                    clientes.map((c) => (
-                      <tr key={c.id} className="border-b hover:bg-zinc-50">
-                        <td className="py-2 px-3">{c.id}</td>
-                        <td className="py-2 px-3">{c.nome}</td>
-                        <td className="py-2 px-3">{c._count?.gps ?? 0}</td>
+            ) : (
+              <div className="table-shell">
+                <div className="overflow-auto">
+                  <table className="min-w-[560px] w-full table-fixed text-sm">
+                    <thead className="sticky top-0 bg-white z-10 border-b">
+                      <tr>
+                        <th className="text-left py-2 px-3">Campo</th>
+                        <th className="text-left py-2 px-3">Valor</th>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    </thead>
+                    <tbody>
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">Cliente</td>
+                        <td className="py-2 px-3 break-words">{foundClienteNome || "-"}</td>
+                      </tr>
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">Busca</td>
+                        <td className="py-2 px-3 break-words">{searchClienteNome || "-"}</td>
+                      </tr>
+                      <tr className="border-b transition-colors">
+                        <td className="py-2 px-3 font-medium">GPs vinculados</td>
+                        <td className="py-2 px-3">{foundClienteGps.length}</td>
+                      </tr>
+                      <tr className="transition-colors">
+                        <td className="py-2 px-3 font-medium">Follow-Ups</td>
+                        <td className="py-2 px-3">{foundClienteFollowUps.length}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
       )}
 
-      {tab === "gps" && (
+
+      {false && (
         <motion.div className="space-y-4" variants={item}>
           <div className="panel-soft space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -999,7 +985,7 @@ export default function Modelagem() {
                 className="input"
                 value={gpForm.chave}
                 onChange={(e) => setGpForm((p) => ({ ...p, chave: e.target.value }))}
-                placeholder="Chave (XXXX-NN ou N.Ã‚Âº)"
+                placeholder="Chave (XXXX-NN ou numero)"
               />
               <input
                 className="input"
@@ -1055,11 +1041,11 @@ export default function Modelagem() {
               </label>
             </div>
 
-            <div className="flex gap-2">
-              <button className="btn btn-primary" onClick={handleSaveGp} type="button">
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-primary flex-1 sm:flex-none" onClick={handleSaveGp} type="button">
                 {gpEditId ? "Salvar edicao" : "Criar GP"}
               </button>
-              <button className="btn" onClick={resetGpForm} type="button">
+              <button className="btn flex-1 sm:flex-none" onClick={resetGpForm} type="button">
                 Limpar
               </button>
             </div>
@@ -1130,7 +1116,7 @@ export default function Modelagem() {
         </motion.div>
       )}
 
-      {tab === "followups" && (
+      {false && (
         <motion.div className="space-y-4" variants={item}>
           <div className="panel-soft space-y-3">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -1161,7 +1147,7 @@ export default function Modelagem() {
               </button>
             </div>
             <div className="text-sm text-zinc-600">
-              {selectedGp ? `GP selecionado: ${selectedGp.chave}` : "Mostrando follow-ups de todos os GPs"}
+              {selectedGp ? `GP selecionado: ${selectedGp?.chave || "-"}` : "Mostrando follow-ups de todos os GPs"}
             </div>
           </div>
 
@@ -1211,11 +1197,11 @@ export default function Modelagem() {
                 placeholder="Valor"
               />
             </div>
-            <div className="flex gap-2">
-              <button className="btn btn-primary" onClick={handleSaveFollowUp} type="button">
+            <div className="flex flex-wrap gap-2">
+              <button className="btn btn-primary flex-1 sm:flex-none" onClick={handleSaveFollowUp} type="button">
                 {followUpEditId ? "Salvar edicao" : "Criar FollowUp"}
               </button>
-              <button className="btn" onClick={() => resetFollowUpForm(true)} type="button">
+              <button className="btn flex-1 sm:flex-none" onClick={() => resetFollowUpForm(true)} type="button">
                 Limpar
               </button>
             </div>

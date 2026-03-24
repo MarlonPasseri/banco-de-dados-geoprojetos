@@ -214,7 +214,7 @@ export default function Insersao() {
 
     setLoading(true);
     try {
-      const r = await searchGrid(String(numero).trim(), sheet, 1, 30);
+      const r = await searchGrid(String(numero).trim(), sheet, 1, 30, "exactNumero");
       const exact = (r.items || []).find((it) => String(it.data?.[keyMap.numero!]).trim() === String(numero).trim());
       const row = exact || (r.items || [])[0];
 
@@ -331,22 +331,22 @@ export default function Insersao() {
 
       <motion.div className="panel-soft space-y-4" variants={item}>
         <div className="flex flex-col gap-3 md:flex-row md:items-end">
-          <div className="space-y-1">
+          <div className="w-full space-y-1 md:w-auto">
             <label className="text-sm text-zinc-600">N.º (GP)</label>
-            <input className="input w-64" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex: 2949" />
+            <input className="input w-full md:w-64" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex: 2949" />
             <p className="text-xs text-zinc-500">Use para buscar e editar.</p>
           </div>
 
-          <div className="flex gap-2">
-            <button className="btn" disabled={!canSearch || loading} onClick={onBuscar}>
+          <div className="flex flex-wrap gap-2 md:flex-nowrap">
+            <button className="btn flex-1 md:flex-none" disabled={!canSearch || loading} onClick={onBuscar}>
               {loading ? "Buscando..." : "Buscar"}
             </button>
-            <button className="btn" disabled={loading} onClick={clearForm}>
+            <button className="btn flex-1 md:flex-none" disabled={loading} onClick={clearForm}>
               Limpar
             </button>
           </div>
 
-          <div className="ml-auto text-sm text-zinc-600">
+          <div className="text-sm text-zinc-600 md:ml-auto">
             {currentRow ? <span className="badge">Modo edicao</span> : <span className="badge">Modo insercao</span>}
           </div>
         </div>

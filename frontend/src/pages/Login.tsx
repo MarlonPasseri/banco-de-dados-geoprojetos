@@ -45,6 +45,7 @@ export default function Login() {
   const { isDark, toggleTheme } = useTheme();
 
   const [mode, setMode] = useState<AuthMode>("login");
+  const [rememberSession, setRememberSession] = useState(true);
   const [identifier, setIdentifier] = useState("admin");
   const [password, setPassword] = useState("admin123");
   const [showPassword, setShowPassword] = useState(false);
@@ -176,9 +177,16 @@ export default function Login() {
       <Toast toast={toast} onClose={() => setToast(null)} />
 
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-180px] top-[-140px] h-[520px] w-[520px] rounded-full bg-sky-200/50 blur-3xl" />
-        <div className="absolute right-[-160px] bottom-[-160px] h-[520px] w-[520px] rounded-full bg-amber-200/40 blur-3xl" />
-        <div className="absolute inset-0 opacity-30 [background:linear-gradient(to_right,rgba(15,23,42,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(15,23,42,0.05)_1px,transparent_1px)] [background-size:34px_34px]" />
+        <div className="absolute left-[-180px] top-[-140px] h-[520px] w-[520px] rounded-full bg-[rgba(0,51,102,0.2)] blur-3xl" />
+        <div className="absolute right-[-160px] bottom-[-160px] h-[520px] w-[520px] rounded-full bg-[rgba(249,115,22,0.18)] blur-3xl" />
+        <div
+          className="absolute inset-0 opacity-40"
+          style={{
+            background:
+              "linear-gradient(to right, var(--login-grid) 1px, transparent 1px), linear-gradient(to bottom, var(--login-grid) 1px, transparent 1px)",
+            backgroundSize: "34px 34px",
+          }}
+        />
       </div>
 
       <div className="absolute right-5 top-5 z-20 sm:right-8 sm:top-8">
@@ -193,99 +201,48 @@ export default function Login() {
         </button>
       </div>
 
-      <div className="relative mx-auto grid min-h-screen w-full max-w-6xl items-center px-5 py-10 sm:px-8">
-        <motion.div
-          className="grid w-full gap-6 lg:grid-cols-[1.08fr_0.92fr]"
+      <div className="relative mx-auto flex min-h-screen w-full max-w-[1180px] items-center px-5 py-8 sm:px-8">
+        <motion.main
+          className="login-blueprint-frame grid w-full md:grid-cols-12"
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -10 }}
           transition={{ duration: 0.3 }}
         >
           <motion.section
-            className="card relative overflow-hidden border-zinc-800/10 bg-zinc-900 p-7 text-white sm:p-10"
+            className="login-blueprint-form md:col-span-5 lg:col-span-4"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.28, delay: 0.03 }}
           >
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_10%,rgba(125,211,252,0.35),transparent_45%),radial-gradient(circle_at_85%_78%,rgba(251,191,36,0.25),transparent_45%)]" />
-            <div className="absolute right-6 top-6 rounded-full border border-white/20 px-3 py-1 text-xs font-medium text-zinc-200">
-              GeoProjetos Local
-            </div>
+            <header className="login-blueprint-header">
+              <div className="login-blueprint-brand">
+                <div className="login-mark">GP</div>
+                <div className="login-blueprint-brand-copy">
+                  <div className="login-blueprint-brand-name">Banco de Dados</div>
+                  <div className="login-blueprint-brand-sub">GeoProjetos Internal DB</div>
+                </div>
+              </div>
 
-            <div className="relative">
-              <div className="login-mark">GP</div>
-              <h1 className="mt-7 heading text-3xl font-semibold leading-tight">
-                Banco de Dados
-                <br />
-                GeoProjetos
-              </h1>
-              <p className="mt-3 max-w-md text-sm text-zinc-200">
-                Plataforma interna para acompanhar contratos, GPs e follow-ups com cadastro e acesso simplificados.
+              <div className="login-blueprint-eyebrow">Acesso autenticado</div>
+              <h1 className="login-blueprint-title">{mode === "login" ? "Acesso ao projeto" : "Criar novo acesso"}</h1>
+              <p className="login-blueprint-desc">
+                {mode === "login"
+                  ? "Entre com suas credenciais internas para acessar consultas, edicao e follow-up."
+                  : "Cadastre um novo usuario interno sem perder o fluxo atual de login do sistema."}
               </p>
+            </header>
 
-              <div className="mt-7 grid gap-3">
-                {highlights.map((item) => (
-                  <div key={item.title} className="flex items-start gap-3 rounded-2xl border border-white/15 bg-white/5 p-3">
-                    <div className="mt-0.5 rounded-xl bg-white/15 p-2">
-                      <item.icon size={16} />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium text-white">{item.title}</p>
-                      <p className="text-xs text-zinc-200">{item.text}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-7 grid grid-cols-3 gap-3 text-center">
-                <div className="rounded-xl border border-white/15 bg-white/5 px-3 py-2">
-                  <div className="text-lg font-semibold">GP</div>
-                  <div className="text-[11px] text-zinc-300">Controle</div>
-                </div>
-                <div className="rounded-xl border border-white/15 bg-white/5 px-3 py-2">
-                  <div className="text-lg font-semibold">SQL</div>
-                  <div className="text-[11px] text-zinc-300">Persistencia</div>
-                </div>
-                <div className="rounded-xl border border-white/15 bg-white/5 px-3 py-2">
-                  <div className="text-lg font-semibold">LOGIN</div>
-                  <div className="text-[11px] text-zinc-300">Direto</div>
-                </div>
-              </div>
-
-              <div className="mt-6 inline-flex items-center gap-2 rounded-full border border-emerald-300/40 bg-emerald-400/15 px-3 py-1 text-xs text-emerald-100">
-                <span className="h-2 w-2 rounded-full bg-emerald-300" />
-                Ambiente ativo para uso interno
-              </div>
-            </div>
-          </motion.section>
-
-          <motion.section
-            className="card border-zinc-200/90 bg-white/95 p-7 sm:p-10"
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.28, delay: 0.09 }}
-          >
             <div className="mb-6 flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-wider text-zinc-500">Acesso ao sistema</p>
-                <h2 className="mt-1 heading text-2xl font-semibold text-zinc-900">
-                  {mode === "login" ? "Entrar" : "Criar conta"}
-                </h2>
-                <p className="mt-1 text-sm text-zinc-500">
-                  {mode === "login"
-                    ? "Use seu usuario ou e-mail para continuar."
-                    : "Cadastre um novo usuario e entre em seguida, sem etapa extra de verificacao."}
-                </p>
-              </div>
-              <div className="hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600 sm:block">
+              <div className="auth-env hidden sm:block">
                 Ambiente local
               </div>
             </div>
 
-            <div className="mb-5 inline-flex w-full rounded-2xl border border-zinc-200 bg-zinc-100 p-1">
+            <div className="auth-switch mb-5">
               <button
                 type="button"
-                className={`flex h-10 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-medium transition ${mode === "login" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600"}`}
+                className={`auth-switch-tab ${mode === "login" ? "auth-switch-tab-active" : ""}`}
                 onClick={() => {
                   setMode("login");
                   setFormError("");
@@ -296,7 +253,7 @@ export default function Login() {
               </button>
               <button
                 type="button"
-                className={`flex h-10 flex-1 items-center justify-center gap-2 rounded-xl text-sm font-medium transition ${mode === "register" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-600"}`}
+                className={`auth-switch-tab ${mode === "register" ? "auth-switch-tab-active" : ""}`}
                 onClick={() => {
                   setMode("register");
                   setFormError("");
@@ -307,22 +264,18 @@ export default function Login() {
               </button>
             </div>
 
-            {formError && (
-              <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {formError}
-              </div>
-            )}
+            {formError ? <div className="auth-alert mb-4">{formError}</div> : null}
 
             {mode === "login" ? (
-              <form onSubmit={onSubmitLogin} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-sm text-zinc-700">Usuario ou e-mail</label>
-                  <div className="relative">
+              <form onSubmit={onSubmitLogin} className="space-y-6">
+                <div className="login-blueprint-field">
+                  <label className="login-blueprint-label">Email ou usuario</label>
+                  <div className="login-blueprint-input">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
                       {identifier.includes("@") ? <Mail size={16} /> : <User size={16} />}
                     </span>
                     <input
-                      className="input pl-10"
+                      className="input login-blueprint-text-input pl-10"
                       value={identifier}
                       onChange={(e) => {
                         setIdentifier(e.target.value);
@@ -334,14 +287,19 @@ export default function Login() {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm text-zinc-700">Senha</label>
-                  <div className="relative">
+                <div className="login-blueprint-field">
+                  <div className="login-blueprint-label-row">
+                    <label className="login-blueprint-label">Chave de seguranca</label>
+                    <button type="button" className="login-blueprint-field-action" onClick={fillDefaultCredentials}>
+                      Usar admin padrao
+                    </button>
+                  </div>
+                  <div className="login-blueprint-input">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
                       <Lock size={16} />
                     </span>
                     <input
-                      className="input pl-10 pr-10"
+                      className="input login-blueprint-text-input pl-10 pr-10"
                       type={showPassword ? "text" : "password"}
                       value={password}
                       onChange={(e) => {
@@ -353,7 +311,7 @@ export default function Login() {
                     />
                     <button
                       type="button"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                      className="auth-icon-button"
                       onClick={() => setShowPassword((v) => !v)}
                       aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                     >
@@ -362,7 +320,16 @@ export default function Login() {
                   </div>
                 </div>
 
-                <button className="btn btn-primary h-11 w-full" disabled={loadingAction !== null || !canLogin}>
+                <label className="login-blueprint-check">
+                  <input
+                    type="checkbox"
+                    checked={rememberSession}
+                    onChange={(e) => setRememberSession(e.target.checked)}
+                  />
+                  <span>Manter sessao ativa por 24 horas</span>
+                </label>
+
+                <button className="login-blueprint-submit" disabled={loadingAction !== null || !canLogin}>
                   <AnimatePresence mode="wait">
                     {loadingAction === "login" ? (
                       <motion.span
@@ -374,7 +341,7 @@ export default function Login() {
                         className="inline-flex items-center gap-2"
                       >
                         <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                        Entrando...
+                        Autorizando...
                       </motion.span>
                     ) : (
                       <motion.span
@@ -385,24 +352,14 @@ export default function Login() {
                         transition={{ duration: 0.15 }}
                         className="inline-flex items-center gap-2"
                       >
-                        Continuar
+                        Autorizar acesso
                         <ArrowRight size={16} />
                       </motion.span>
                     )}
                   </AnimatePresence>
                 </button>
 
-                <button
-                  type="button"
-                  className="btn h-11 w-full"
-                  onClick={fillDefaultCredentials}
-                  disabled={loadingAction !== null}
-                  title="Preenche as credenciais padrao de desenvolvimento"
-                >
-                  Usar admin padrao
-                </button>
-
-                <div className="space-y-2 pt-1 text-xs text-zinc-500">
+                <div className="auth-note space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="badge">Padrao: admin / admin123</span>
                     <span className="text-zinc-400">configure em backend/.env</span>
@@ -411,15 +368,15 @@ export default function Login() {
                 </div>
               </form>
             ) : (
-              <form onSubmit={onSubmitRegister} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-sm text-zinc-700">Nome</label>
-                  <div className="relative">
+              <form onSubmit={onSubmitRegister} className="space-y-6">
+                <div className="login-blueprint-field">
+                  <label className="login-blueprint-label">Nome</label>
+                  <div className="login-blueprint-input">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
                       <User size={16} />
                     </span>
                     <input
-                      className="input pl-10"
+                      className="input login-blueprint-text-input pl-10"
                       value={name}
                       onChange={(e) => {
                         setName(e.target.value);
@@ -431,14 +388,14 @@ export default function Login() {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm text-zinc-700">E-mail</label>
-                  <div className="relative">
+                <div className="login-blueprint-field">
+                  <label className="login-blueprint-label">E-mail</label>
+                  <div className="login-blueprint-input">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
                       <Mail size={16} />
                     </span>
                     <input
-                      className="input pl-10"
+                      className="input login-blueprint-text-input pl-10"
                       type="email"
                       value={email}
                       onChange={(e) => {
@@ -451,14 +408,14 @@ export default function Login() {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm text-zinc-700">Senha</label>
-                  <div className="relative">
+                <div className="login-blueprint-field">
+                  <label className="login-blueprint-label">Chave de seguranca</label>
+                  <div className="login-blueprint-input">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
                       <Lock size={16} />
                     </span>
                     <input
-                      className="input pl-10 pr-10"
+                      className="input login-blueprint-text-input pl-10 pr-10"
                       type={showPassword ? "text" : "password"}
                       value={registerPassword}
                       onChange={(e) => {
@@ -470,7 +427,7 @@ export default function Login() {
                     />
                     <button
                       type="button"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                      className="auth-icon-button"
                       onClick={() => setShowPassword((v) => !v)}
                       aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
                     >
@@ -479,14 +436,14 @@ export default function Login() {
                   </div>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-sm text-zinc-700">Confirmar senha</label>
-                  <div className="relative">
+                <div className="login-blueprint-field">
+                  <label className="login-blueprint-label">Confirmar chave</label>
+                  <div className="login-blueprint-input">
                     <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400">
                       <Lock size={16} />
                     </span>
                     <input
-                      className="input pl-10 pr-10"
+                      className="input login-blueprint-text-input pl-10 pr-10"
                       type={showConfirmPassword ? "text" : "password"}
                       value={confirmPassword}
                       onChange={(e) => {
@@ -498,7 +455,7 @@ export default function Login() {
                     />
                     <button
                       type="button"
-                      className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+                      className="auth-icon-button"
                       onClick={() => setShowConfirmPassword((v) => !v)}
                       aria-label={showConfirmPassword ? "Ocultar confirmacao" : "Mostrar confirmacao"}
                     >
@@ -507,7 +464,7 @@ export default function Login() {
                   </div>
                 </div>
 
-                <button className="btn btn-primary h-11 w-full" disabled={loadingAction !== null || !canRegister}>
+                <button className="login-blueprint-submit" disabled={loadingAction !== null || !canRegister}>
                   <AnimatePresence mode="wait">
                     {loadingAction === "register" ? (
                       <motion.span
@@ -519,7 +476,7 @@ export default function Login() {
                         className="inline-flex items-center gap-2"
                       >
                         <span className="h-4 w-4 rounded-full border-2 border-white/40 border-t-white animate-spin" />
-                        Criando conta...
+                        Criando acesso...
                       </motion.span>
                     ) : (
                       <motion.span
@@ -530,20 +487,89 @@ export default function Login() {
                         transition={{ duration: 0.15 }}
                         className="inline-flex items-center gap-2"
                       >
-                        Criar conta
+                        Criar acesso
                         <UserRoundPlus size={16} />
                       </motion.span>
                     )}
                   </AnimatePresence>
                 </button>
 
-                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs text-zinc-500">
+                <div className="auth-note">
                   Depois do cadastro, o usuario ja pode usar o login com o e-mail e a senha criados.
                 </div>
               </form>
             )}
+
+            <footer className="login-blueprint-footer">
+              <div className="login-blueprint-footer-block">
+                <span className="login-blueprint-footer-label">Status do sistema</span>
+                <div className="login-blueprint-footer-value">
+                  <span className="login-blueprint-dot" />
+                  Operacional
+                </div>
+              </div>
+              <div className="login-blueprint-footer-block">
+                <span className="login-blueprint-footer-label">Regiao</span>
+                <div className="login-blueprint-footer-value">BR-SP-01</div>
+              </div>
+            </footer>
           </motion.section>
-        </motion.div>
+
+          <motion.section
+            className="login-blueprint-visual hidden md:block md:col-span-7 lg:col-span-8"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, delay: 0.09 }}
+          >
+            <div className="login-blueprint-visual-inner">
+              <div className="flex items-start justify-between gap-4">
+                <div className="login-blueprint-chip-row">
+                  <span className="login-blueprint-chip">Consultas</span>
+                  <span className="login-blueprint-chip">Edicao</span>
+                  <span className="login-blueprint-chip">Follow-up</span>
+                </div>
+
+                <div className="login-blueprint-stat">
+                  <div className="login-blueprint-stat-top">
+                    <div className="login-blueprint-stat-icon">
+                      <Sparkles size={18} />
+                    </div>
+                    <div>
+                      <div className="login-blueprint-stat-label">Fluxos ativos</div>
+                      <div className="login-blueprint-stat-value">{highlights.length} modulos</div>
+                    </div>
+                  </div>
+                  <div className="login-blueprint-stat-text">Consulta, edicao e acompanhamento centralizados.</div>
+                </div>
+              </div>
+
+              <div className="login-blueprint-quote-wrap">
+                <div className="login-blueprint-accent-bar" />
+                <blockquote className="login-blueprint-quote">
+                  "A integridade do projeto nao depende so do contrato, mas da <span>precisao</span> dos dados."
+                </blockquote>
+                <div className="login-blueprint-caption">
+                  <div className="login-blueprint-caption-line" />
+                  Painel interno GeoProjetos
+                </div>
+
+                <div className="login-blueprint-metrics">
+                  {highlights.map((item) => (
+                    <div key={item.title} className="login-blueprint-metric">
+                      <div className="login-blueprint-metric-icon">
+                        <item.icon size={16} />
+                      </div>
+                      <div>
+                        <div className="login-blueprint-metric-title">{item.title}</div>
+                        <div className="login-blueprint-metric-text">{item.text}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </motion.section>
+        </motion.main>
       </div>
     </div>
   );

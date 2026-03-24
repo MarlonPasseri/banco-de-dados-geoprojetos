@@ -303,13 +303,15 @@ export async function searchGrid(
   q: string,
   sheet: string,
   page = 1,
-  pageSize = 50
+  pageSize = 50,
+  mode: "broad" | "smart" | "exactNumero" = "broad"
 ) {
   const qs = new URLSearchParams();
   qs.set("q", q);
   qs.set("sheet", sheet);
   qs.set("page", String(page));
   qs.set("pageSize", String(pageSize));
+  if (mode !== "broad") qs.set("mode", mode);
 
   return http<{
     total: number;
@@ -317,6 +319,7 @@ export async function searchGrid(
     pageSize: number;
     columns: GridColumn[];
     items: GridRow[];
+    matchMode: "broad" | "exactNumero";
   }>(`/grid/search?${qs.toString()}`);
 }
 

@@ -1,7 +1,22 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { Activity, BarChart3, BellRing, CircleUserRound, Database, FileEdit, LayoutGrid, LogOut, MoonStar, PlusSquare, Search, SunMedium, Upload } from "lucide-react";
+import {
+  Activity,
+  BarChart3,
+  BellRing,
+  CircleUserRound,
+  Database,
+  FileEdit,
+  LayoutGrid,
+  LogOut,
+  MoonStar,
+  PlusSquare,
+  Search,
+  SunMedium,
+  Upload,
+  type LucideIcon,
+} from "lucide-react";
 import { clearToken, fetchCurrentUser, getStoredUser, getToken, listFollowUps, subscribeAuthUserChange, type AuthUser } from "../api";
 import { useTheme } from "./ThemeProvider";
 
@@ -62,14 +77,18 @@ function getUserInitials(user: AuthUser | null) {
   return parts.map((part) => part.slice(0, 1).toUpperCase()).join("");
 }
 
-function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) {
-  const { pathname, search } = useLocation();
+function isNavTargetActive(to: string, pathname: string, search: string) {
   const [targetPathname, targetSearch = ""] = to.split("?");
   const currentParams = new URLSearchParams(search);
   const targetParams = new URLSearchParams(targetSearch);
   const currentTab = currentParams.get("tab");
   const targetTab = targetParams.get("tab");
-  const active = targetTab ? pathname === targetPathname && currentTab === targetTab : pathname === targetPathname;
+  return targetTab ? pathname === targetPathname && currentTab === targetTab : pathname === targetPathname;
+}
+
+function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) {
+  const { pathname, search } = useLocation();
+  const active = isNavTargetActive(to, pathname, search);
 
   return (
     <Link to={to} className={`nav-link ${active ? "nav-link-active" : ""}`}>
@@ -78,6 +97,34 @@ function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) 
     </Link>
   );
 }
+
+function MobileDockItem({ to, label, Icon }: { to: string; label: string; Icon: LucideIcon }) {
+  const { pathname, search } = useLocation();
+  const active = isNavTargetActive(to, pathname, search);
+
+  return (
+    <Link to={to} className={`mobile-dock-item ${active ? "mobile-dock-item-active" : ""}`}>
+      <Icon size={18} />
+      <span>{label}</span>
+    </Link>
+  );
+}
+
+const NAV_ITEMS: Array<{ to: string; label: string; subtitle: string; Icon: LucideIcon }> = [
+  { to: "/", label: "Dashboard", subtitle: "Visao geral operacional", Icon: LayoutGrid },
+  { to: "/consultas", label: "Consultas", subtitle: "Busca direcionada e leitura de dados", Icon: Search },
+  { to: "/graficos", label: "Graficos", subtitle: "Leitura analitica e comparativos", Icon: BarChart3 },
+  { to: "/modelagem", label: "Follow up", subtitle: "Acompanhamento e gestao de follow-ups", Icon: Database },
+  { to: "/atividades", label: "Atividades", subtitle: "Agenda operacional do dia", Icon: Activity },
+  { to: "/insersao", label: "Insercao", subtitle: "Cadastro de novos registros", Icon: PlusSquare },
+  { to: "/edicao", label: "Edicao", subtitle: "Ajustes e manutencao de dados", Icon: FileEdit },
+  { to: "/import", label: "Importar", subtitle: "Sincronizacao de planilhas", Icon: Upload },
+  { to: "/usuario", label: "Usuario", subtitle: "Perfil e configuracoes da conta", Icon: CircleUserRound },
+];
+
+const MOBILE_DOCK_ITEMS = NAV_ITEMS.filter((item) =>
+  ["/", "/consultas", "/modelagem", "/atividades", "/usuario"].includes(item.to),
+);
 
 export default function AppLayout({ children }: { children: ReactNode }) {
   const { isDark, toggleTheme } = useTheme();
@@ -185,89 +232,141 @@ export default function AppLayout({ children }: { children: ReactNode }) {
     };
   }, [acknowledgedDate, pathname]);
 
+  const currentSection = useMemo(
+    () =>
+      NAV_ITEMS.find((item) => item.to === pathname) || {
+        to: pathname,
+        label: "Painel",
+        subtitle: "Banco de Dados GeoProjetos",
+        Icon: LayoutGrid,
+      },
+    [pathname],
+  );
+
   return (
-    <div className="app-shell relative min-h-screen overflow-hidden">
+    <div className="app-shell app-blueprint-shell relative min-h-screen overflow-hidden">
       <div className="pointer-events-none absolute inset-0">
-        <div className="absolute left-[-140px] top-[-120px] h-[500px] w-[500px] rounded-full bg-sky-200/35 blur-3xl" />
-        <div className="absolute bottom-[-180px] right-[-140px] h-[520px] w-[520px] rounded-full bg-amber-200/30 blur-3xl" />
+        <div className="absolute left-[-140px] top-[-120px] h-[500px] w-[500px] rounded-full bg-[rgba(0,51,102,0.18)] blur-3xl" />
+        <div className="absolute bottom-[-180px] right-[-140px] h-[520px] w-[520px] rounded-full bg-[rgba(249,115,22,0.16)] blur-3xl" />
       </div>
 
-      <header className="app-header sticky top-0 z-40 border-b border-zinc-200/70 backdrop-blur-md">
-        <div className="mx-auto max-w-[1480px] px-4 py-3 sm:px-6">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="brand-mark">GP</div>
-              <div className="leading-tight">
-                <div className="heading text-lg font-semibold">Banco de Dados</div>
-                <div className="text-xs text-zinc-500">GeoProjetos - Painel Interno</div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                className="theme-toggle"
-                onClick={toggleTheme}
-                title={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
-                aria-label={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
-              >
-                <span className="theme-toggle-icon">{isDark ? <SunMedium size={16} /> : <MoonStar size={16} />}</span>
-                <span className="theme-toggle-copy hidden sm:inline">{isDark ? "Modo claro" : "Modo escuro"}</span>
-              </button>
-              <span className="badge hidden sm:inline-flex">
-                <Activity size={13} className="mr-1.5" />
-                Sessao ativa
-              </span>
-              <Link
-                to="/usuario"
-                className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-zinc-200 bg-zinc-900 text-sm font-semibold text-white shadow-sm transition hover:border-zinc-300"
-                title="Abrir perfil"
-                aria-label="Abrir perfil"
-              >
-                {currentUser?.avatarUrl ? (
-                  <img src={currentUser.avatarUrl} alt="Foto do usuario" className="h-full w-full object-cover" />
-                ) : initials ? (
-                  <span>{initials}</span>
-                ) : (
-                  <CircleUserRound size={16} />
-                )}
-              </Link>
-              <button
-                className="btn"
-                onClick={() => {
-                  clearToken();
-                  window.location.href = "/login";
-                }}
-                title="Sair"
-              >
-                <LogOut size={16} />
-                Sair
-              </button>
+      <aside className="shell-sidebar hidden lg:flex">
+        <div className="shell-sidebar-inner">
+          <div className="shell-sidebar-brand">
+            <div className="brand-mark">GP</div>
+            <div className="shell-brand-copy">
+              <div className="shell-brand-title">Banco de Dados</div>
+              <div className="shell-brand-subtitle">GeoProjetos • Painel Interno</div>
             </div>
           </div>
 
-          <nav className="nav-strip mt-3 flex items-center gap-1 overflow-x-auto pb-1">
-            <NavItem to="/" label="Dashboard" Icon={LayoutGrid} />
-            <NavItem to="/consultas" label="Consultas" Icon={Search} />
-            <NavItem to="/graficos" label="Graficos" Icon={BarChart3} />
-            <NavItem to="/modelagem" label="Follow up" Icon={Database} />
-            <NavItem to="/atividades" label="Atividades" Icon={Activity} />
-            <NavItem to="/insersao" label="Insercao" Icon={PlusSquare} />
-            <NavItem to="/edicao" label="Edicao" Icon={FileEdit} />
-            <NavItem to="/import" label="Importar" Icon={Upload} />
-            <NavItem to="/usuario" label="Usuario" Icon={CircleUserRound} />
+          <nav className="shell-nav">
+            {NAV_ITEMS.map((item) => (
+              <NavItem key={item.to} to={item.to} label={item.label} Icon={item.Icon} />
+            ))}
           </nav>
-        </div>
-      </header>
 
-      <motion.main
-        className="relative mx-auto max-w-[1480px] p-4 sm:p-6"
-        initial={{ opacity: 0, y: 14 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -10 }}
-        transition={{ duration: 0.25 }}
-      >
-        {children}
-      </motion.main>
+          <div className="shell-sidebar-footer">
+            <Link to="/insersao" className="shell-primary-action">
+              <PlusSquare size={15} />
+              Nova entrada
+            </Link>
+
+            <div className="shell-status-card">
+              <div className="shell-status-label">Status do sistema</div>
+              <div className="shell-status-value">
+                <span className="shell-status-dot" />
+                Sessao ativa
+              </div>
+              <div className="shell-status-copy">{currentUser?.name || currentUser?.username || currentUser?.email || "Usuario autenticado"}</div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <div className="shell-main">
+        <header className="shell-topbar">
+          <div className="mx-auto max-w-[1480px] px-4 pt-4 sm:px-6">
+            <div className="shell-topbar-inner">
+              <div className="shell-topbar-copy">
+                <div className="shell-topbar-eyebrow">Banco de Dados GeoProjetos</div>
+                <div className="shell-topbar-meta">
+                  <span className="shell-topbar-section">{currentSection.label}</span>
+                  <span className="shell-topbar-subtitle">{currentSection.subtitle}</span>
+                </div>
+              </div>
+
+              <div className="shell-topbar-actions">
+                <Link to="/consultas" className="shell-search-link" title="Abrir consultas">
+                  <Search size={15} />
+                  <span className="sm:hidden">Buscar</span>
+                  <span className="hidden sm:inline">Buscar GP, cliente ou follow-up</span>
+                </Link>
+
+                <Link to="/atividades" className="shell-icon-btn" title="Abrir atividades">
+                  <BellRing size={16} />
+                </Link>
+
+                <button
+                  className="theme-toggle"
+                  onClick={toggleTheme}
+                  title={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
+                  aria-label={isDark ? "Ativar modo claro" : "Ativar modo escuro"}
+                >
+                  <span className="theme-toggle-icon">{isDark ? <SunMedium size={16} /> : <MoonStar size={16} />}</span>
+                  <span className="theme-toggle-copy hidden sm:inline">{isDark ? "Modo claro" : "Modo escuro"}</span>
+                </button>
+
+                <Link to="/usuario" className="profile-chip" title="Abrir perfil" aria-label="Abrir perfil">
+                  {currentUser?.avatarUrl ? (
+                    <img src={currentUser.avatarUrl} alt="Foto do usuario" />
+                  ) : initials ? (
+                    <span>{initials}</span>
+                  ) : (
+                    <CircleUserRound size={16} />
+                  )}
+                </Link>
+
+                <button
+                  className="btn"
+                  onClick={() => {
+                    clearToken();
+                    window.location.href = "/login";
+                  }}
+                  title="Sair"
+                >
+                  <LogOut size={16} />
+                  <span className="hidden sm:inline">Sair</span>
+                </button>
+              </div>
+            </div>
+
+            <nav className="nav-strip shell-mobile-nav mt-3 hidden items-center gap-1 overflow-x-auto pb-1 md:flex lg:hidden">
+              {NAV_ITEMS.map((item) => (
+                <NavItem key={item.to} to={item.to} label={item.label} Icon={item.Icon} />
+              ))}
+            </nav>
+          </div>
+        </header>
+
+        <motion.main
+          className="shell-content relative mx-auto max-w-[1480px] p-4 sm:p-6"
+          initial={{ opacity: 0, y: 14 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -10 }}
+          transition={{ duration: 0.25 }}
+        >
+          {children}
+        </motion.main>
+      </div>
+
+      <nav className="mobile-dock md:hidden" aria-label="Navegacao principal">
+        <div className="mobile-dock-inner">
+          {MOBILE_DOCK_ITEMS.map((item) => (
+            <MobileDockItem key={item.to} to={item.to} label={item.label} Icon={item.Icon} />
+          ))}
+        </div>
+      </nav>
 
       <AnimatePresence>
         {activityReminder?.visible && pathname !== "/atividades" ? (

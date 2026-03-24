@@ -159,7 +159,7 @@ export default function Edicao() {
     setLoading(true);
     try {
       const numeroBusca = String(numero).trim();
-      const r = await searchGrid(numeroBusca, sheet, 1, 50);
+      const r = await searchGrid(numeroBusca, sheet, 1, 50, "exactNumero");
       const exact = (r.items || []).find((it) => String(it.data?.[keyNumero]).trim() === numeroBusca);
       const row = exact || (r.items || [])[0];
 
@@ -194,7 +194,7 @@ export default function Edicao() {
       const numeroAtualizado = keyNumero ? editableValue(mergedData[keyNumero]) : String(numero).trim();
       if (numeroAtualizado) {
         setNumero(numeroAtualizado);
-        const r = await searchGrid(numeroAtualizado, sheet, 1, 50);
+        const r = await searchGrid(numeroAtualizado, sheet, 1, 50, "exactNumero");
         const exact = keyNumero
           ? (r.items || []).find((it) => String(it.data?.[keyNumero] ?? "").trim() === numeroAtualizado)
           : null;
@@ -245,19 +245,19 @@ export default function Edicao() {
 
       <motion.div className="panel-soft space-y-4" variants={item}>
         <div className="flex flex-col gap-3 md:flex-row md:items-end">
-          <div className="space-y-1">
+          <div className="w-full space-y-1 md:w-auto">
             <label className="text-sm text-zinc-600">Numero (GP)</label>
-            <input className="input w-64" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex: 2949" />
+            <input className="input w-full md:w-64" value={numero} onChange={(e) => setNumero(e.target.value)} placeholder="Ex: 2949" />
           </div>
 
-          <div className="flex gap-2">
-            <button className="btn" disabled={!canSearch || loading} onClick={onBuscar}>
+          <div className="flex flex-wrap gap-2 md:flex-nowrap">
+            <button className="btn flex-1 md:flex-none" disabled={!canSearch || loading} onClick={onBuscar}>
               {loading ? "Buscando..." : "Buscar"}
             </button>
-            <button className="btn" disabled={loading} onClick={clearForm}>
+            <button className="btn flex-1 md:flex-none" disabled={loading} onClick={clearForm}>
               Limpar
             </button>
-            <button className="btn btn-primary" disabled={loading || !currentRow} onClick={onSalvar}>
+            <button className="btn btn-primary w-full sm:w-auto" disabled={loading || !currentRow} onClick={onSalvar}>
               {loading ? "Salvando..." : "Salvar alteracoes"}
             </button>
           </div>

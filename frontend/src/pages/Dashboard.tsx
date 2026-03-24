@@ -179,13 +179,13 @@ function DashboardOverviewCard({
 }) {
   return (
     <div className="dash-overview-card" data-tone={tone}>
-      <div className="dash-overview-label">{label}</div>
-      <div className="dash-overview-value">
+      <div className="dash-overview-head">
+        <div className="dash-overview-label">{label}</div>
         <span className="dash-overview-icon">
           <Icon size={17} />
         </span>
-        <span>{value}</span>
       </div>
+      <div className="dash-overview-value">{value}</div>
       <div className="dash-overview-meta">{meta}</div>
     </div>
   );
@@ -204,13 +204,31 @@ function DashboardMiniCard({
 }) {
   return (
     <div className="dash-mini-card">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="dash-mini-label">{label}</div>
-          <div className="dash-mini-value">{value}</div>
-          <div className="dash-mini-text">{text}</div>
-        </div>
-        <Icon size={18} className="text-zinc-500" />
+      <div className="dash-mini-head">
+        <div className="dash-mini-label">{label}</div>
+        <Icon size={18} className="dash-mini-icon" />
+      </div>
+      <div className="dash-mini-value">{value}</div>
+      <div className="dash-mini-text">{text}</div>
+    </div>
+  );
+}
+
+function DashboardFeedItem({
+  stamp,
+  text,
+  tone,
+}: {
+  stamp: string;
+  text: string;
+  tone: "accent" | "warning" | "muted";
+}) {
+  return (
+    <div className="dash-feed-item" data-tone={tone}>
+      <div className="dash-feed-marker" />
+      <div className="dash-feed-copy">
+        <div className="dash-feed-stamp">{stamp}</div>
+        <div className="dash-feed-text">{text}</div>
       </div>
     </div>
   );
@@ -442,6 +460,40 @@ export default function Dashboard() {
     },
   ];
 
+  const dashboardFeedItems: Array<{ stamp: string; text: string; tone: "accent" | "warning" | "muted" }> = [
+    {
+      stamp: `Janela ${page}/${totalPages}`,
+      text: `${visibleRowsCount} de ${rows.length} linhas estao visiveis nesta pagina da grade.`,
+      tone: "accent",
+    },
+    {
+      stamp: file ? "Importacao pronta" : "Importacao",
+      text: file
+        ? `${file.name} aguarda envio em modo merge para a aba ${sheetLabel}.`
+        : `Nenhum arquivo foi selecionado para sincronizar a aba ${sheetLabel}.`,
+      tone: file ? "warning" : "muted",
+    },
+    {
+      stamp: hasQuickFiltersActive ? "Filtros locais" : "Sem filtros",
+      text: hasQuickFiltersActive
+        ? `${filterSummary} influenciando a leitura da janela atual.`
+        : "A leitura local esta livre para inspecao completa da pagina carregada.",
+      tone: hasQuickFiltersActive ? "accent" : "muted",
+    },
+    {
+      stamp: sortByDate && dateKey ? "Ordenacao automatica" : "Leitura manual",
+      text: sortByDate && dateKey
+        ? `Contratos priorizados pelo campo ${dateLabel || dateKey}.`
+        : "A grade segue a ordem padrao retornada pela API.",
+      tone: sortByDate && dateKey ? "accent" : "muted",
+    },
+  ];
+
+  const spotlightTitle = file ? "Importacao pronta para sincronizacao" : "Estrutura pronta para manutencao";
+  const spotlightText = file
+    ? `O arquivo ${file.name} ja esta preparado para merge. Revise a aba alvo e siga com a sincronizacao quando quiser.`
+    : `Use as acoes rapidas para criar colunas, incluir linhas ou atualizar a leitura da aba ${sheetLabel} sem sair do dashboard.`;
+
   useEffect(() => {
     setPageInput(String(page));
   }, [page]);
@@ -572,19 +624,149 @@ export default function Dashboard() {
     setPeriodTo("");
   }
 
+  const tableSection = (
+    <div className="table-shell table-shell-dashboard dash-blueprint-table">
+      <div className="dash-table-meta dash-table-meta-blueprint">
+        <div>
+          <div className="dash-table-kicker">Grade operacional</div>
+          <div className="dash-table-title">Grade operacional da aba {sheetLabel}</div>
+        </div>
+        <div className="dash-table-meta-copy">
+          <span>
+            Mostrando <strong>{visibleRowsCount}</strong> de <strong>{rows.length}</strong> linhas nesta pagina
+          </span>
+          <span>
+            {hasQuickFiltersActive ? `${filterSummary}. ` : ""}
+            Duplo clique para editar, Enter salva, Esc cancela.
+          </span>
+        </div>
+      </div>
+
+      <div className="overflow-auto" style={{ maxHeight: "70vh" }}>
+        <table className="min-w-[1450px] w-full text-sm">
+          <thead className="sticky top-0 z-10 border-b backdrop-blur">
+            <tr>
+              <th className="table-shell-sticky sticky left-0 z-20 w-[96px] whitespace-nowrap px-3 py-3 text-left">Acoes</th>
+              <th className="w-[84px] whitespace-nowrap px-3 py-3 text-left">Linha</th>
+              {columns.map((c) => (
+                <th key={c.key} className="whitespace-nowrap px-3 py-3 text-left">
+                  <div className="flex items-center gap-2">
+                    <span title={c.key} className="font-semibold">
+                      {c.label}
+                    </span>
+                    <button className="btn !px-2 !py-1 text-xs" onClick={() => onDeleteColumn(c.key)} title="Excluir coluna">
+                      Excluir
+                    </button>
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+
+          <tbody>
+            {loading ? (
+              <TableSkeletonRows cols={Math.max(columns.length + 1, 6)} rows={6} withActions />
+            ) : filteredRows.length === 0 ? (
+              <tr>
+                <td className="px-3 py-6" colSpan={columns.length + 2}>
+                  <EmptyState
+                    compact
+                    title="Nenhuma linha encontrada"
+                    text={
+                      hasQuickFiltersActive
+                        ? "Ajuste os filtros rapidos para visualizar resultados."
+                        : `Nao ha registros para a aba ${sheetLabel}.`
+                    }
+                  />
+                </td>
+              </tr>
+            ) : (
+              filteredRows.map((r) => (
+                <tr key={r.id} className="data-table-row">
+                  <td className="table-shell-sticky sticky left-0 z-10 px-3 py-2">
+                    <button className="btn btn-danger !px-2 !py-1 text-xs" onClick={() => onDeleteRow(r.id)}>
+                      Excluir
+                    </button>
+                  </td>
+
+                  <td className="data-table-cell-muted px-3 py-2 text-xs font-medium">{r.rowNumber ?? "-"}</td>
+
+                  {columns.map((c) => {
+                    const isEditing = editing?.rowId === r.id && editing?.key === c.key;
+                    const cellValue = (r.data || {})[c.key];
+                    const displayValue = isDateLabel(c.label)
+                      ? formatDateValue(cellValue)
+                      : isMoneyLabel(c.label)
+                      ? formatMoneyValue(cellValue)
+                      : fmt(cellValue);
+
+                    return (
+                      <td
+                        key={c.key}
+                        className="cursor-cell whitespace-nowrap px-3 py-2"
+                        onDoubleClick={() => startEdit(r.id, c.key, cellValue)}
+                        title="Duplo clique para editar"
+                      >
+                        {isEditing ? (
+                          <input
+                            ref={inputRef}
+                            className="input w-full min-w-[150px] py-1.5"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") commitEdit();
+                              if (e.key === "Escape") cancelEdit();
+                            }}
+                            onBlur={commitEdit}
+                          />
+                        ) : (
+                          <span className={displayValue === "-" ? "data-table-cell-empty" : "data-table-cell-value"}>
+                            {displayValue}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
+  const spotlightSection = (
+    <div className="dash-spotlight">
+      <div className="dash-spotlight-copy">
+        <div className="dash-spotlight-kicker">Destaque operacional</div>
+        <div className="dash-spotlight-title">{spotlightTitle}</div>
+        <div className="dash-spotlight-text">{spotlightText}</div>
+      </div>
+      <div className="dash-spotlight-actions">
+        <button className="btn btn-primary" onClick={file ? onImportGrid : onCreateColumn}>
+          {file ? "Importar arquivo" : "+ Coluna"}
+        </button>
+        <button className="btn" onClick={file ? reload : onCreateRow}>
+          {file ? "Atualizar grade" : "+ Linha"}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <motion.div className="space-y-6" variants={container} initial="hidden" animate="show">
-      <motion.section className="page-hero dash-hero" variants={item}>
+      <motion.section className="page-hero dash-hero dash-blueprint-hero" variants={item}>
         <div className="dash-hero-grid">
-          <div className="space-y-4">
-            <div>
-              <div className="page-kicker">Centro de operacao</div>
-              <h1 className="page-title inline-flex items-center gap-2">
-                <LayoutGrid size={22} />
-                Dashboard
+          <div className="space-y-5">
+            <div className="dash-hero-copy">
+              <div className="page-kicker">Visao operacional</div>
+              <h1 className="page-title dash-hero-title">
+                <LayoutGrid size={18} className="dash-hero-title-icon" />
+                <span>Dashboard</span>
               </h1>
-              <p className="page-desc">
-                Controle a aba ativa, importe planilhas e mantenha a leitura do grid organizada em um unico painel.
+              <p className="page-desc dash-hero-desc">
+                Controle a aba ativa, importe planilhas e acompanhe a grade operacional em uma leitura mais tecnica e orientada a contexto.
               </p>
             </div>
 
@@ -603,7 +785,7 @@ export default function Dashboard() {
               </span>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="dash-hero-action-row">
               <button className="btn btn-primary" onClick={onCreateColumn}>
                 + Coluna
               </button>
@@ -640,7 +822,7 @@ export default function Dashboard() {
         </div>
       </motion.section>
 
-      <motion.div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" variants={item}>
+      <motion.div className="dash-kpi-grid" variants={item}>
         {overviewCards.map((card) => (
           <DashboardOverviewCard
             key={card.label}
@@ -654,49 +836,50 @@ export default function Dashboard() {
       </motion.div>
 
       <motion.section className="dash-section-grid" variants={item}>
-        <div className="panel-soft space-y-4">
-          <div className="dash-block">
-            <div className="dash-block-header">
-              <div>
-                <div className="dash-block-title">Contexto da aba</div>
-                <div className="dash-block-desc">Troque a planilha ativa e defina a leitura inicial do grid.</div>
+        <div className="dash-primary-column">
+          <div className="dash-control-grid">
+            <div className="dash-block">
+              <div className="dash-block-header">
+                <div>
+                  <div className="dash-block-title">Contexto da aba</div>
+                  <div className="dash-block-desc">Troque a planilha ativa e defina a leitura inicial do grid.</div>
+                </div>
+                <span className="badge">{sortSummary}</span>
               </div>
-              <span className="badge">{sortSummary}</span>
-            </div>
 
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,220px)_auto]">
-              <label className="space-y-1">
-                <span className="text-sm text-zinc-600">Aba</span>
-                <input
-                  className="input"
-                  value={sheet}
-                  onChange={(e) => setSheet(e.target.value)}
-                  placeholder="CONTRATOS"
-                />
-              </label>
-
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="dash-toggle">
+              <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,220px)_auto]">
+                <label className="space-y-1">
+                  <span className="text-sm text-zinc-600">Aba</span>
                   <input
-                    type="checkbox"
-                    className="h-4 w-4 accent-sky-500"
-                    checked={sortByDate}
-                    onChange={(e) => setSortByDate(e.target.checked)}
+                    className="input"
+                    value={sheet}
+                    onChange={(e) => setSheet(e.target.value)}
+                    placeholder="CONTRATOS"
                   />
-                  Mais recentes por ano
                 </label>
 
-                {sortByDate && sheet.toUpperCase() === "CONTRATOS" && (
-                  <span className="badge">
-                    <SlidersHorizontal size={13} className="mr-1.5" />
-                    {dateKey ? `Campo: ${dateLabel || dateKey}` : "Nenhuma coluna de data encontrada"}
-                  </span>
-                )}
+                <div className="flex flex-wrap items-center gap-3">
+                  <label className="dash-toggle">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 accent-sky-500"
+                      checked={sortByDate}
+                      onChange={(e) => setSortByDate(e.target.checked)}
+                    />
+                    Mais recentes por ano
+                  </label>
+
+                  {sortByDate && sheet.toUpperCase() === "CONTRATOS" && (
+                    <span className="badge">
+                      <SlidersHorizontal size={13} className="mr-1.5" />
+                      {dateKey ? `Campo: ${dateLabel || dateKey}` : "Nenhuma coluna de data encontrada"}
+                    </span>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="dash-block">
+          <div className="dash-block dash-block-span-2">
             <div className="dash-block-header">
               <div>
                 <div className="dash-block-title inline-flex items-center gap-2">
@@ -800,9 +983,6 @@ export default function Dashboard() {
               </button>
             </div>
           </div>
-        </div>
-
-        <div className="panel-soft space-y-4">
           <div className="dash-block">
             <div className="dash-block-header">
               <div>
@@ -839,7 +1019,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="dash-block">
+          <div className="dash-block dash-block-span-2">
             <div className="dash-block-header">
               <div>
                 <div className="dash-block-title">Navegacao</div>
@@ -890,113 +1070,48 @@ export default function Dashboard() {
                 text={filterSummary}
               />
             </div>
+            </div>
+          </div>
+
+          {tableSection}
+          {spotlightSection}
+        </div>
+
+        <div className="dash-secondary-column">
+          <div className="dash-feed-card">
+            <div className="dash-block-header">
+              <div>
+                <div className="dash-block-title">Leituras recentes</div>
+                <div className="dash-block-desc">Leituras operacionais geradas a partir do estado atual do dashboard.</div>
+              </div>
+              <span className="badge">{dashboardFeedItems.length} itens</span>
+            </div>
+
+            <div className="dash-feed-list">
+              {dashboardFeedItems.map((entry) => (
+                <DashboardFeedItem key={entry.stamp} stamp={entry.stamp} text={entry.text} tone={entry.tone} />
+              ))}
+            </div>
+
+            <button className="btn mt-4 w-full" onClick={reload}>
+              <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
+              Atualizar leitura
+            </button>
+          </div>
+
+          <div className="dash-support-card">
+            <div className="dash-support-title">Suporte operacional</div>
+            <div className="dash-support-text">
+              Use o dashboard para revisar a aba ativa, aplicar filtros locais e preparar importacoes antes de avancar para consultas ou edicao.
+            </div>
+            <div className="dash-support-actions">
+              <span className="badge">Aba: {sheetLabel}</span>
+              <span className="badge">{hasQuickFiltersActive ? "Filtros ligados" : "Filtro livre"}</span>
+            </div>
           </div>
         </div>
       </motion.section>
 
-      <motion.section className="table-shell table-shell-dashboard" variants={item}>
-        <div className="dash-table-meta">
-          <span>
-            Mostrando <strong>{visibleRowsCount}</strong> de <strong>{rows.length}</strong> linhas nesta pagina
-          </span>
-          <span>
-            {hasQuickFiltersActive ? `${filterSummary}. ` : ""}
-            Duplo clique para editar, Enter salva, Esc cancela.
-          </span>
-        </div>
-
-        <div className="overflow-auto" style={{ maxHeight: "70vh" }}>
-          <table className="min-w-[1450px] w-full text-sm">
-            <thead className="sticky top-0 z-10 border-b backdrop-blur">
-              <tr>
-                <th className="table-shell-sticky sticky left-0 z-20 w-[96px] whitespace-nowrap px-3 py-3 text-left">Acoes</th>
-                <th className="w-[84px] whitespace-nowrap px-3 py-3 text-left">Linha</th>
-                {columns.map((c) => (
-                  <th key={c.key} className="whitespace-nowrap px-3 py-3 text-left">
-                    <div className="flex items-center gap-2">
-                      <span title={c.key} className="font-semibold">
-                        {c.label}
-                      </span>
-                      <button className="btn !px-2 !py-1 text-xs" onClick={() => onDeleteColumn(c.key)} title="Excluir coluna">
-                        Excluir
-                      </button>
-                    </div>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-
-            <tbody>
-              {loading ? (
-                <TableSkeletonRows cols={Math.max(columns.length + 1, 6)} rows={6} withActions />
-              ) : filteredRows.length === 0 ? (
-                <tr>
-                  <td className="px-3 py-6" colSpan={columns.length + 2}>
-                    <EmptyState
-                      compact
-                      title="Nenhuma linha encontrada"
-                      text={
-                        hasQuickFiltersActive
-                          ? "Ajuste os filtros rapidos para visualizar resultados."
-                          : `Nao ha registros para a aba ${sheetLabel}.`
-                      }
-                    />
-                  </td>
-                </tr>
-              ) : (
-                filteredRows.map((r) => (
-                  <tr key={r.id} className="data-table-row">
-                    <td className="table-shell-sticky sticky left-0 z-10 px-3 py-2">
-                      <button className="btn btn-danger !px-2 !py-1 text-xs" onClick={() => onDeleteRow(r.id)}>
-                        Excluir
-                      </button>
-                    </td>
-
-                    <td className="data-table-cell-muted px-3 py-2 text-xs font-medium">{r.rowNumber ?? "-"}</td>
-
-                    {columns.map((c) => {
-                      const isEditing = editing?.rowId === r.id && editing?.key === c.key;
-                      const cellValue = (r.data || {})[c.key];
-                      const displayValue = isDateLabel(c.label)
-                        ? formatDateValue(cellValue)
-                        : isMoneyLabel(c.label)
-                        ? formatMoneyValue(cellValue)
-                        : fmt(cellValue);
-
-                      return (
-                        <td
-                          key={c.key}
-                          className="cursor-cell whitespace-nowrap px-3 py-2"
-                          onDoubleClick={() => startEdit(r.id, c.key, cellValue)}
-                          title="Duplo clique para editar"
-                        >
-                          {isEditing ? (
-                            <input
-                              ref={inputRef}
-                              className="input w-full min-w-[150px] py-1.5"
-                              value={editValue}
-                              onChange={(e) => setEditValue(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") commitEdit();
-                                if (e.key === "Escape") cancelEdit();
-                              }}
-                              onBlur={commitEdit}
-                            />
-                          ) : (
-                            <span className={displayValue === "-" ? "data-table-cell-empty" : "data-table-cell-value"}>
-                              {displayValue}
-                            </span>
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </motion.section>
     </motion.div>
   );
 }
