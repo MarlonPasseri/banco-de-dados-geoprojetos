@@ -1,6 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
+  Bell,
+  BellRing,
   CalendarClock,
   ClipboardList,
   FolderOpen,
@@ -14,9 +16,16 @@ import { useNavigate } from "react-router-dom";
 import { deleteFollowUp, listFollowUps, type FollowUp } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
 import { EmptyState } from "../components/UiStates";
+import {
+  getBrowserNotificationPermission,
+  requestBrowserNotificationPermission,
+  showBrowserNotification,
+  type BrowserNotificationPermission,
+} from "../utils/browserNotifications";
 import { safeUUID } from "../utils/uuid";
 
 type ActivityTypeKey = "all" | "convite" | "entrega" | "ultimoContato";
+type LoadActivitiesSource = "date-change" | "manual" | "poll";
 
 type ActivityView = {
   row: FollowUp;
@@ -26,6 +35,9 @@ type ActivityView = {
   clientName: string;
   statusText: string;
 };
+
+const ACTIVITY_NOTIFICATION_POLL_MS = 60_000;
+const ACTIVITY_NOTIFICATION_STORAGE_PREFIX = "activities-notification-seen";
 
 function toDateInput(value: unknown) {
   if (!value) return "";
@@ -94,6 +106,50 @@ function buildStatusLabel(status: string | null) {
   return text || "Sem status";
 }
 
+function buildActivityNotificationKey(row: FollowUp, date: string) {
+  const meta = getActivityMeta(row, date);
+  return [
+    row.id,
+    date,
+    meta.types.slice().sort().join(","),
+    buildStatusLabel(row.status),
+    toDateInput(row.convite),
+    toDateInput(row.entrega),
+    toDateInput(row.ultimoContato),
+  ].join("|");
+}
+
+function getSeenActivityStorageKey(date: string) {
+  return `${ACTIVITY_NOTIFICATION_STORAGE_PREFIX}:${date}`;
+}
+
+function readSeenActivityKeys(date: string) {
+  if (typeof window === "undefined" || !date) return { exists: false, keys: [] as string[] };
+  const raw = window.localStorage.getItem(getSeenActivityStorageKey(date));
+  if (raw === null) return { exists: false, keys: [] as string[] };
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return { exists: false, keys: [] as string[] };
+    return {
+      exists: true,
+      keys: parsed.filter((value): value is string => typeof value === "string"),
+    };
+  } catch {
+    return { exists: false, keys: [] as string[] };
+  }
+}
+
+function writeSeenActivityKeys(date: string, keys: string[]) {
+  if (typeof window === "undefined" || !date) return;
+
+  try {
+    window.localStorage.setItem(getSeenActivityStorageKey(date), JSON.stringify(Array.from(new Set(keys)).slice(-300)));
+  } catch {
+    // storage pode falhar em modo restrito; seguimos sem persistencia
+  }
+}
+
 function ActivityStatCard({
   label,
   value,
@@ -123,6 +179,13 @@ export default function Atividades() {
   const [typeFilter, setTypeFilter] = useState<ActivityTypeKey>("all");
   const [statusFilter, setStatusFilter] = useState("__all__");
   const [search, setSearch] = useState("");
+  const [notificationPermission, setNotificationPermission] = useState<BrowserNotificationPermission>(() =>
+    getBrowserNotificationPermission()
+  );
+  const [notificationBusy, setNotificationBusy] = useState(false);
+
+  const loadSequenceRef = useRef(0);
+  const pollErrorShownRef = useRef(false);
 
   const container = {
     hidden: { opacity: 1 },
@@ -133,30 +196,152 @@ export default function Atividades() {
     show: { opacity: 1, y: 0, transition: { duration: 0.25 } },
   };
 
-  function notify(type: ToastMsg["type"], title: string, text: string) {
+  const isTodaySelection = selectedDate === todayDateInput();
+
+  const notify = useCallback((type: ToastMsg["type"], title: string, text: string) => {
     setToast({ id: safeUUID(), type, title, text });
-  }
+  }, []);
 
-  async function loadActivities() {
-    if (!selectedDate) {
-      setItems([]);
-      return;
-    }
+  const syncNotificationPermission = useCallback(() => {
+    setNotificationPermission(getBrowserNotificationPermission());
+  }, []);
 
-    setLoading(true);
-    try {
-      const data = await listFollowUps({ date: selectedDate });
-      setItems(data || []);
-    } catch (e: any) {
-      notify("error", "Erro", e?.message || "Falha ao carregar atividades");
-    } finally {
-      setLoading(false);
-    }
-  }
+  const seedSeenActivities = useCallback((date: string, rows: FollowUp[]) => {
+    const keys = rows
+      .filter((row) => getActivityMeta(row, date).labels.length > 0)
+      .map((row) => buildActivityNotificationKey(row, date));
+
+    writeSeenActivityKeys(date, keys);
+  }, []);
+
+  const sendNewActivityNotification = useCallback(
+    (newRows: FollowUp[], date: string) => {
+      if (newRows.length === 0) return;
+
+      const first = newRows[0];
+      const firstMeta = getActivityMeta(first, date);
+      const firstClient = first.gp?.cliente?.nome || "Sem cliente";
+      const firstGp = first.gp?.chave || `GP ${first.gpId}`;
+      const title =
+        newRows.length === 1 ? "Nova atividade na agenda de hoje" : `${newRows.length} novas atividades na agenda`;
+      const body =
+        newRows.length === 1
+          ? `${firstClient} | ${firstGp} | ${firstMeta.labels.join(", ") || "Nova atividade"}`
+          : `${newRows.length} item(ns) novos encontrados. Primeiro: ${firstClient} | ${firstGp}.`;
+
+      const shouldUseBrowserNotification =
+        typeof document === "undefined" || document.visibilityState !== "visible";
+
+      if (shouldUseBrowserNotification) {
+        const result = showBrowserNotification(title, {
+          body,
+          tag: `activities-${date}`,
+          renotify: true,
+        });
+
+        if (result.ok) return;
+        setNotificationPermission(result.permission);
+      }
+
+      notify(
+        "info",
+        "Agenda atualizada",
+        newRows.length === 1
+          ? "Uma nova atividade entrou na agenda monitorada."
+          : `${newRows.length} novas atividades entraram na agenda monitorada.`
+      );
+    },
+    [notify]
+  );
+
+  const loadActivities = useCallback(
+    async (source: LoadActivitiesSource = "manual", options?: { silent?: boolean }) => {
+      if (!selectedDate) {
+        setItems([]);
+        return;
+      }
+
+      const requestId = ++loadSequenceRef.current;
+      if (!options?.silent) setLoading(true);
+
+      try {
+        const data = await listFollowUps({ date: selectedDate });
+        if (requestId !== loadSequenceRef.current) return;
+
+        const nextItems = data || [];
+        setItems(nextItems);
+        pollErrorShownRef.current = false;
+
+        const matchingRows = nextItems.filter((row) => getActivityMeta(row, selectedDate).labels.length > 0);
+        const currentKeys = matchingRows.map((row) => buildActivityNotificationKey(row, selectedDate));
+
+        if (source === "poll" && isTodaySelection && notificationPermission === "granted") {
+          const previousState = readSeenActivityKeys(selectedDate);
+          writeSeenActivityKeys(selectedDate, currentKeys);
+
+          if (previousState.exists) {
+            const previousKeys = new Set(previousState.keys);
+            const newRows = matchingRows.filter((row) => !previousKeys.has(buildActivityNotificationKey(row, selectedDate)));
+            if (newRows.length > 0) sendNewActivityNotification(newRows, selectedDate);
+          }
+        } else {
+          writeSeenActivityKeys(selectedDate, currentKeys);
+        }
+      } catch (e: any) {
+        if (requestId !== loadSequenceRef.current) return;
+
+        if (source !== "poll" || !pollErrorShownRef.current) {
+          notify("error", "Erro", e?.message || "Falha ao carregar atividades");
+          if (source === "poll") pollErrorShownRef.current = true;
+        }
+      } finally {
+        if (requestId === loadSequenceRef.current && !options?.silent) {
+          setLoading(false);
+        }
+      }
+    },
+    [isTodaySelection, notificationPermission, notify, selectedDate, sendNewActivityNotification]
+  );
 
   useEffect(() => {
-    loadActivities();
-  }, [selectedDate]);
+    syncNotificationPermission();
+
+    if (typeof window === "undefined") return undefined;
+
+    window.addEventListener("focus", syncNotificationPermission);
+    return () => window.removeEventListener("focus", syncNotificationPermission);
+  }, [syncNotificationPermission]);
+
+  useEffect(() => {
+    void loadActivities("date-change");
+  }, [loadActivities]);
+
+  useEffect(() => {
+    if (!selectedDate || !isTodaySelection || notificationPermission !== "granted") return undefined;
+
+    const timer = window.setInterval(() => {
+      void loadActivities("poll", { silent: true });
+    }, ACTIVITY_NOTIFICATION_POLL_MS);
+
+    return () => window.clearInterval(timer);
+  }, [isTodaySelection, loadActivities, notificationPermission, selectedDate]);
+
+  const requestNotificationAccess = useCallback(async () => {
+    const currentPermission = getBrowserNotificationPermission();
+    setNotificationPermission(currentPermission);
+
+    if (currentPermission === "unsupported" || currentPermission === "denied") return currentPermission;
+    if (currentPermission === "granted") return currentPermission;
+
+    setNotificationBusy(true);
+    try {
+      const nextPermission = await requestBrowserNotificationPermission();
+      setNotificationPermission(nextPermission);
+      return nextPermission;
+    } finally {
+      setNotificationBusy(false);
+    }
+  }, []);
 
   const activityViews = useMemo<ActivityView[]>(() => {
     return (items || [])
@@ -211,6 +396,40 @@ export default function Atividades() {
     }, 0);
   }, [visibleActivities]);
 
+  const notificationStatus = useMemo(() => {
+    if (notificationPermission === "unsupported") {
+      return {
+        badge: "Indisponivel",
+        tone: "muted",
+        text: "O navegador atual nao expoe notificacoes do sistema.",
+      };
+    }
+
+    if (notificationPermission === "denied") {
+      return {
+        badge: "Bloqueadas",
+        tone: "warning",
+        text: "A permissao foi bloqueada. Libere manualmente no navegador para receber alertas automaticos.",
+      };
+    }
+
+    if (notificationPermission === "default") {
+      return {
+        badge: "Desligadas",
+        tone: "warning",
+        text: "Ative as notificacoes para monitorar novas atividades da agenda de hoje automaticamente.",
+      };
+    }
+
+    return {
+      badge: isTodaySelection ? "Ativas" : "Prontas",
+      tone: "success",
+      text: isTodaySelection
+        ? "Monitoramento automatico ativo para a agenda de hoje, com nova checagem a cada 60 segundos."
+        : "Permissao concedida. Volte para a data de hoje se quiser receber alertas automaticos.",
+    };
+  }, [isTodaySelection, notificationPermission]);
+
   const activityCounters = useMemo(() => {
     return visibleActivities.reduce(
       (acc, entry) => {
@@ -228,6 +447,7 @@ export default function Atividades() {
     for (const entry of visibleActivities) {
       map.set(entry.statusText, (map.get(entry.statusText) || 0) + 1);
     }
+
     const total = visibleActivities.length || 1;
     return Array.from(map.entries())
       .map(([label, count]) => ({
@@ -238,6 +458,80 @@ export default function Atividades() {
       .sort((a, b) => b.count - a.count);
   }, [visibleActivities]);
 
+  const handleEnableNotifications = useCallback(async () => {
+    const permission = await requestNotificationAccess();
+    if (permission !== "granted") {
+      if (permission === "unsupported") {
+        notify("error", "Sem suporte", "Este navegador nao suporta notificacoes do sistema.");
+        return;
+      }
+
+      if (permission === "denied") {
+        notify("error", "Permissao negada", "O navegador bloqueou as notificacoes. Ajuste a permissao manualmente para continuar.");
+        return;
+      }
+
+      notify("info", "Permissao pendente", "A permissao ainda nao foi concedida pelo navegador.");
+      return;
+    }
+
+    seedSeenActivities(selectedDate, items);
+
+    const result = showBrowserNotification("Notificacoes ativadas", {
+      body: isTodaySelection
+        ? "A agenda de hoje agora pode avisar voce quando surgirem novas atividades."
+        : "Permissao confirmada. Use a data de hoje para monitoramento automatico.",
+      tag: "activities-enabled",
+    });
+
+    if (!result.ok) {
+      setNotificationPermission(result.permission);
+      notify("error", "Falha ao notificar", "A permissao foi concedida, mas o navegador nao conseguiu abrir a notificacao.");
+      return;
+    }
+
+    notify(
+      "success",
+      "Notificacoes ativadas",
+      isTodaySelection
+        ? "A agenda de hoje passou a monitorar novas atividades automaticamente."
+        : "Permissao confirmada. Volte para a data de hoje para monitoramento automatico."
+    );
+  }, [isTodaySelection, items, notify, requestNotificationAccess, seedSeenActivities, selectedDate]);
+
+  const handleTestNotification = useCallback(async () => {
+    const permission = await requestNotificationAccess();
+    if (permission !== "granted") {
+      if (permission === "unsupported") {
+        notify("error", "Sem suporte", "Este navegador nao suporta notificacoes do sistema.");
+        return;
+      }
+
+      if (permission === "denied") {
+        notify("error", "Permissao negada", "Libere as notificacoes nas configuracoes do navegador para testar novamente.");
+        return;
+      }
+
+      notify("info", "Permissao pendente", "A permissao ainda nao foi concedida para disparar o teste.");
+      return;
+    }
+
+    const result = showBrowserNotification("Teste da agenda operacional", {
+      body: `Tudo certo. A agenda de ${fmtDate(selectedDate)} conseguiu disparar uma notificacao de teste.`,
+      tag: "activities-test",
+      renotify: true,
+      requireInteraction: true,
+    });
+
+    if (!result.ok) {
+      setNotificationPermission(result.permission);
+      notify("error", "Teste falhou", "Nao foi possivel abrir a notificacao de teste no navegador.");
+      return;
+    }
+
+    notify("success", "Teste enviado", "A notificacao de teste foi disparada para o navegador.");
+  }, [notify, requestNotificationAccess, selectedDate]);
+
   async function handleDelete(row: FollowUp) {
     const ok = confirm(`Excluir follow-up #${row.id}?`);
     if (!ok) return;
@@ -245,7 +539,7 @@ export default function Atividades() {
     try {
       await deleteFollowUp(row.id);
       notify("success", "Follow-up excluido", "Registro removido da agenda do dia.");
-      await loadActivities();
+      await loadActivities("manual");
     } catch (e: any) {
       notify("error", "Erro", e?.message || "Falha ao excluir follow-up.");
     }
@@ -304,7 +598,7 @@ export default function Atividades() {
             </label>
 
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <button className="btn btn-primary" onClick={loadActivities} type="button">
+              <button className="btn btn-primary" onClick={() => void loadActivities("manual")} type="button">
                 <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
                 Atualizar agenda
               </button>
@@ -322,6 +616,37 @@ export default function Atividades() {
               </button>
             </div>
 
+            <div className="activities-notify-card">
+              <div className="activities-notify-head">
+                <div>
+                  <div className="activities-notify-title">Notificacoes do navegador</div>
+                  <div className="activities-notify-text">{notificationStatus.text}</div>
+                </div>
+                <span className="activities-notify-badge" data-tone={notificationStatus.tone}>
+                  {notificationStatus.badge}
+                </span>
+              </div>
+
+              <div className="activities-notify-actions">
+                {notificationPermission !== "granted" ? (
+                  <button className="btn" onClick={() => void handleEnableNotifications()} type="button" disabled={notificationBusy}>
+                    <Bell size={14} />
+                    {notificationBusy ? "Solicitando..." : "Ativar notificacoes"}
+                  </button>
+                ) : null}
+
+                <button
+                  className="btn"
+                  onClick={() => void handleTestNotification()}
+                  type="button"
+                  disabled={notificationBusy || notificationPermission === "unsupported"}
+                >
+                  <BellRing size={14} />
+                  Testar notificacao
+                </button>
+              </div>
+            </div>
+
             <div className="text-sm text-white/80">
               A agenda considera qualquer follow-up com <strong>convite</strong>, <strong>entrega</strong> ou
               <strong> ultimo contato</strong> marcado para a data escolhida.
@@ -331,24 +656,9 @@ export default function Atividades() {
       </motion.section>
 
       <motion.div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" variants={item}>
-        <ActivityStatCard
-          label="Agenda visivel"
-          value={visibleActivities.length}
-          text="Registros retornados para a data e filtros locais"
-          tone="slate"
-        />
-        <ActivityStatCard
-          label="Convites"
-          value={activityCounters.convite}
-          text="Follow-ups com convite na data selecionada"
-          tone="convite"
-        />
-        <ActivityStatCard
-          label="Entregas"
-          value={activityCounters.entrega}
-          text="Itens com entrega prevista para o dia"
-          tone="entrega"
-        />
+        <ActivityStatCard label="Agenda visivel" value={visibleActivities.length} text="Registros retornados para a data e filtros locais" tone="slate" />
+        <ActivityStatCard label="Convites" value={activityCounters.convite} text="Follow-ups com convite na data selecionada" tone="convite" />
+        <ActivityStatCard label="Entregas" value={activityCounters.entrega} text="Itens com entrega prevista para o dia" tone="entrega" />
         <ActivityStatCard
           label="Ultimos contatos"
           value={activityCounters.ultimoContato}
@@ -363,9 +673,7 @@ export default function Atividades() {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <div className="activity-section-title">Leitura da agenda</div>
-                <div className="activity-section-desc">
-                  Use os filtros abaixo para enxergar so o tipo de acao que interessa agora.
-                </div>
+                <div className="activity-section-desc">Use os filtros abaixo para enxergar so o tipo de acao que interessa agora.</div>
               </div>
               <span className="badge">Data ativa: {fmtDate(selectedDate)}</span>
             </div>
@@ -375,12 +683,7 @@ export default function Atividades() {
                 <span className="text-xs text-zinc-600">Buscar por GP, cliente ou status</span>
                 <div className="relative">
                   <Search size={14} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-                  <input
-                    className="input pl-8"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Ex.: GP, cliente ou status"
-                  />
+                  <input className="input pl-8" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Ex.: GP, cliente ou status" />
                 </div>
               </label>
 
@@ -443,7 +746,7 @@ export default function Atividades() {
                       <div className="activity-card-title">{entry.row.gp?.chave || entry.row.gpId}</div>
                       <div className="activity-card-meta">
                         {entry.row.gp?.grupo || "Sem grupo"}
-                        {entry.row.gp?.ano ? ` • ${entry.row.gp?.ano}` : ""}
+                        {entry.row.gp?.ano ? ` | ${entry.row.gp?.ano}` : ""}
                       </div>
                     </div>
 
@@ -478,15 +781,11 @@ export default function Atividades() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      <button
-                        className="btn"
-                        onClick={() => navigate(`/modelagem?tab=followups&gpId=${entry.row.gpId}`)}
-                        type="button"
-                      >
+                      <button className="btn" onClick={() => navigate(`/modelagem?tab=followups&gpId=${entry.row.gpId}`)} type="button">
                         <Send size={14} />
                         Abrir follow-up
                       </button>
-                      <button className="btn" onClick={() => handleDelete(entry.row)} type="button">
+                      <button className="btn" onClick={() => void handleDelete(entry.row)} type="button">
                         <Trash2 size={14} />
                         Excluir
                       </button>
@@ -501,9 +800,7 @@ export default function Atividades() {
         <aside className="space-y-4">
           <div className="panel-soft space-y-3">
             <div className="activity-section-title">Radar por status</div>
-            <div className="activity-section-desc">
-              Distribuicao da agenda filtrada para ajudar a priorizar o dia.
-            </div>
+            <div className="activity-section-desc">Distribuicao da agenda filtrada para ajudar a priorizar o dia.</div>
 
             {statusSummary.length === 0 ? (
               <EmptyState compact title="Sem status para exibir" text="Assim que houver atividades, o radar aparece aqui." />
@@ -513,9 +810,7 @@ export default function Atividades() {
                   <div key={status.label} className="space-y-1.5">
                     <div className="flex items-center justify-between gap-3 text-sm">
                       <span className="font-medium text-zinc-800">{status.label}</span>
-                      <span className="text-zinc-500">
-                        {status.count} item(ns) • {status.percent}%
-                      </span>
+                      <span className="text-zinc-500">{status.count} item(ns) | {status.percent}%</span>
                     </div>
                     <div className="activity-status-track">
                       <div className="activity-status-fill" style={{ width: `${status.percent}%` }} />
@@ -528,9 +823,7 @@ export default function Atividades() {
 
           <div className="panel-soft space-y-3">
             <div className="activity-section-title">Leitura rapida</div>
-            <div className="activity-section-desc">
-              Um resumo compacto do que esta acontecendo no dia selecionado.
-            </div>
+            <div className="activity-section-desc">Um resumo compacto do que esta acontecendo no dia selecionado.</div>
 
             <div className="activity-note">
               <strong>{fmtDate(selectedDate)}</strong>
@@ -548,9 +841,7 @@ export default function Atividades() {
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span>Clientes envolvidos</span>
-                <strong className="text-zinc-900">
-                  {new Set(visibleActivities.map((entry) => entry.clientName)).size}
-                </strong>
+                <strong className="text-zinc-900">{new Set(visibleActivities.map((entry) => entry.clientName)).size}</strong>
               </div>
               <div className="flex items-center justify-between gap-3">
                 <span>Valor total filtrado</span>
@@ -561,9 +852,7 @@ export default function Atividades() {
 
           <div className="panel-soft space-y-3">
             <div className="activity-section-title">Fluxo sugerido</div>
-            <div className="activity-section-desc">
-              Use esta tela para enxergar o dia. Quando precisar ajustar cadastro, abra o follow-up do item.
-            </div>
+            <div className="activity-section-desc">Use esta tela para enxergar o dia. Quando precisar ajustar cadastro, abra o follow-up do item.</div>
 
             <div className="space-y-2 text-sm text-zinc-600">
               <div>1. Selecione a data.</div>

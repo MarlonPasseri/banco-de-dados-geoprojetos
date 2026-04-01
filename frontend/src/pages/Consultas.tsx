@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { FilePenLine, Search, SearchX } from "lucide-react";
+import { FilePenLine, RotateCcw, Search, SearchX } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { searchGrid, type GridColumn, type GridRow } from "../api";
 import { Toast, type ToastMsg } from "../components/Toast";
@@ -85,6 +85,26 @@ export default function Consultas() {
     () => columns.filter((column) => items.some((row) => hasVisibleValue(row.data?.[column.key]))),
     [columns, items]
   );
+  const searchExamples = ["1234-25", "cliente", "pendente"];
+  const searchStrategy = useMemo(
+    () =>
+      !canSearch
+        ? {
+            title: "Comece pelo que voce sabe",
+            text: "Digite uma GP, nome de cliente, servico ou status. A leitura da tabela vai se ajustar so com base no que fizer sentido para a busca.",
+          }
+        : isGpSearch
+        ? {
+            title: "Busca orientada para GP",
+            text: "Como o termo parece uma GP, o sistema tenta primeiro o numero exato e so depois abre os resultados aproximados.",
+          }
+        : {
+            title: "Busca ampla em toda a base",
+            text: "O termo atual sera procurado nas colunas visiveis da aba selecionada para reduzir o tempo de procura manual.",
+          },
+    [canSearch, isGpSearch]
+  );
+  const resultsLabel = canSearch ? `${total} resultado(s)` : "Aguardando busca";
 
   useEffect(() => setPage(1), [query, sheet]);
 
@@ -140,48 +160,133 @@ export default function Consultas() {
     navigate("/edicao", { state: { row, sheet, numero } });
   }
 
+  function applyExample(value: string) {
+    setQ(value);
+    setPage(1);
+  }
+
   return (
     <motion.div className="space-y-6" variants={container} initial="hidden" animate="show">
       <Toast toast={toast} onClose={() => setToast(null)} />
 
-      <motion.div className="page-hero" variants={item}>
-        <div>
-          <div className="page-kicker">Busca</div>
-          <h1 className="page-title inline-flex items-center gap-2">
-            <Search size={22} />
-            Consultas
-          </h1>
-          <p className="page-desc">Pesquise no banco inteiro. Quando o termo parecer uma GP, a busca prioriza o numero exato.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="badge">Aba: {sheet}</span>
-          <span className="badge">Resultados: {total}</span>
-          {canSearch && isGpSearch && !loading && (
-            <span className="badge">
-              {matchMode === "exactNumero" ? "Busca por GP exata" : "Sem GP exata, mostrando aproximados"}
-            </span>
-          )}
+      <motion.div className="page-hero consultas-hero" variants={item}>
+        <div className="consultas-hero-grid">
+          <div className="space-y-4">
+            <div>
+              <div className="page-kicker">Busca guiada</div>
+              <h1 className="page-title inline-flex items-center gap-2">
+                <Search size={22} />
+                Consultas
+              </h1>
+              <p className="page-desc">
+                Encontre registros sem precisar adivinhar onde procurar. Quando o termo parecer uma GP, a busca tenta primeiro o numero exato.
+              </p>
+            </div>
+
+            <div className="consultas-hero-chips">
+              <span className="badge">Aba atual: {sheet}</span>
+              <span className="badge">{resultsLabel}</span>
+              <span className="badge">{loading ? "Buscando em tempo real" : "Leitura atualizada"}</span>
+              {canSearch && isGpSearch && !loading ? (
+                <span className="badge">
+                  {matchMode === "exactNumero" ? "GP encontrada com exatidao" : "Sem GP exata, mostrando aproximados"}
+                </span>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="consultas-hero-tip">
+            <div className="consultas-hero-tip-label">Como a busca vai agir</div>
+            <div className="consultas-hero-tip-title">{searchStrategy.title}</div>
+            <div className="consultas-hero-tip-text">{searchStrategy.text}</div>
+          </div>
         </div>
       </motion.div>
 
-      <motion.div className="panel-soft space-y-3" variants={item}>
+      <motion.div className="panel-soft space-y-4" variants={item}>
+        <div className="consultas-panel-head">
+          <div>
+            <div className="activity-section-title">Refine sua busca</div>
+            <div className="activity-section-desc">
+              Escolha a aba, digite o termo e use os exemplos abaixo se quiser testar um caminho rapido.
+            </div>
+          </div>
+
+          <div className="consultas-example-row">
+            {searchExamples.map((example) => (
+              <button key={example} className="consultas-example-chip" onClick={() => applyExample(example)} type="button">
+                {example}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
           <div className="space-y-1">
-            <label className="text-sm text-zinc-600">Aba</label>
-            <input className="input" value={sheet} onChange={(e) => setSheet(e.target.value)} />
+            <label className="text-sm text-zinc-600" htmlFor="consultas-sheet">
+              Aba
+            </label>
+            <input
+              id="consultas-sheet"
+              className="input"
+              value={sheet}
+              onChange={(e) => setSheet(e.target.value)}
+              placeholder="Ex.: CONTRATOS"
+              autoComplete="off"
+            />
           </div>
 
           <div className="space-y-1 md:col-span-2">
-            <label className="text-sm text-zinc-600">Pesquisar</label>
-            <input
-              className="input"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Digite (min. 2 caracteres)..."
-            />
-            <p className="text-xs text-zinc-500">
+            <label className="text-sm text-zinc-600" htmlFor="consultas-query">
+              Pesquisar
+            </label>
+            <div className="consultas-search-shell">
+              <Search size={16} className="consultas-search-icon" />
+              <input
+                id="consultas-query"
+                className="consultas-search-input"
+                type="search"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Digite GP, cliente, servico ou status"
+                autoComplete="off"
+                aria-describedby="consultas-help"
+              />
+              {query ? (
+                <button className="consultas-clear-btn" onClick={() => applyExample("")} type="button" aria-label="Limpar busca">
+                  <RotateCcw size={14} />
+                </button>
+              ) : null}
+            </div>
+            <p id="consultas-help" className="consultas-field-help">
               Para GP, a busca tenta primeiro o numero exato. Para outros termos, pesquisa em todas as colunas.
             </p>
+          </div>
+        </div>
+
+        <div className="consultas-summary-row" aria-live="polite">
+          <div className="consultas-summary-card">
+            <div className="consultas-summary-label">Leitura atual</div>
+            <div className="consultas-summary-value">{loading ? "Buscando..." : resultsLabel}</div>
+            <div className="consultas-summary-text">
+              {!canSearch
+                ? "Digite ao menos dois caracteres para ativar a consulta."
+                : total === 0
+                ? "Nenhum registro encontrado ainda para o termo atual."
+                : `Mostrando ${items.length} item(ns) nesta pagina para acelerar a leitura.`}
+            </div>
+          </div>
+
+          <div className="consultas-summary-card">
+            <div className="consultas-summary-label">Modo aplicado</div>
+            <div className="consultas-summary-value">{isGpSearch ? "Prioridade para GP" : "Busca ampla"}</div>
+            <div className="consultas-summary-text">{searchStrategy.text}</div>
+          </div>
+
+          <div className="consultas-summary-card">
+            <div className="consultas-summary-label">Acoes disponiveis</div>
+            <div className="consultas-summary-value">{!loading && items.length > 0 ? `${resultColumns.length} colunas uteis` : "Prontas para editar"}</div>
+            <div className="consultas-summary-text">Quando encontrar o registro certo, use o botao Editar para seguir direto para a manutencao.</div>
           </div>
         </div>
 
@@ -194,31 +299,40 @@ export default function Consultas() {
             ) : (
               <span className="badge">Resultados: {total}</span>
             )}
-            {!loading && items.length > 0 && <span className="badge">Colunas com dados: {resultColumns.length}</span>}
+            {!loading && items.length > 0 ? <span className="badge">Colunas com dados: {resultColumns.length}</span> : null}
+            {query ? (
+              <button className="btn" onClick={() => applyExample("")} type="button">
+                <RotateCcw size={14} />
+                Limpar busca
+              </button>
+            ) : null}
           </div>
 
-          {canSearch && total > 0 && (
+          {canSearch && total > 0 ? (
             <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-              <button className="btn flex-1 sm:flex-none" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)}>
+              <button className="btn flex-1 sm:flex-none" disabled={page <= 1 || loading} onClick={() => setPage((p) => p - 1)} type="button">
                 Anterior
               </button>
               <span className="text-sm text-zinc-600">
                 Pagina {page} / {totalPages}
               </span>
-              <button className="btn flex-1 sm:flex-none" disabled={page >= totalPages || loading} onClick={() => setPage((p) => p + 1)}>
+              <button className="btn flex-1 sm:flex-none" disabled={page >= totalPages || loading} onClick={() => setPage((p) => p + 1)} type="button">
                 Proxima
               </button>
             </div>
-          )}
+          ) : null}
         </div>
       </motion.div>
 
       {!canSearch ? (
         <div className="panel-soft">
-          <EmptyState
-            title="Digite para iniciar a busca"
-            text="Use pelo menos dois caracteres para consultar em todas as colunas."
-          />
+          <EmptyState title="Digite para iniciar a busca" text="Use pelo menos dois caracteres para consultar em todas as colunas.">
+            {searchExamples.map((example) => (
+              <button key={`empty-example-${example}`} className="consultas-example-chip" onClick={() => applyExample(example)} type="button">
+                Testar: {example}
+              </button>
+            ))}
+          </EmptyState>
         </div>
       ) : loading ? (
         <div className="table-shell">
@@ -232,7 +346,12 @@ export default function Consultas() {
         </div>
       ) : items.length === 0 ? (
         <div className="panel-soft">
-          <EmptyState Icon={SearchX} title="Nenhum resultado" text="Tente outro termo, aba ou pagina de busca." />
+          <EmptyState Icon={SearchX} title="Nenhum resultado" text="Tente outro termo, aba ou pagina de busca.">
+            <button className="btn" onClick={() => applyExample("")} type="button">
+              <RotateCcw size={14} />
+              Limpar e tentar de novo
+            </button>
+          </EmptyState>
         </div>
       ) : (
         <div className="table-shell">
@@ -253,7 +372,7 @@ export default function Consultas() {
                 {items.map((r) => (
                   <tr key={r.id} className="border-b transition-colors">
                     <td className="whitespace-nowrap px-3 py-2">
-                      <button className="btn" onClick={() => goToEdicao(r)}>
+                      <button className="btn" onClick={() => goToEdicao(r)} type="button">
                         <FilePenLine size={16} />
                         Editar
                       </button>
@@ -269,7 +388,9 @@ export default function Consultas() {
             </table>
           </div>
 
-          <div className="border-t p-3 text-xs text-zinc-500">Mostrando {items.length} nesta pagina (de {total} no total).</div>
+          <div className="consultas-table-foot border-t p-3 text-xs text-zinc-500">
+            Mostrando {items.length} registro(s) nesta pagina, de um total de {total}. Se encontrou o item certo, siga pelo botao Editar para continuar o fluxo.
+          </div>
         </div>
       )}
     </motion.div>

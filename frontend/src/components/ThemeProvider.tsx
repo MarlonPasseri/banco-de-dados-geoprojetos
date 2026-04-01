@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
 
 type ThemeMode = "light" | "dark";
 
@@ -10,31 +10,93 @@ type ThemeContextValue = {
 };
 
 const THEME_STORAGE_KEY = "geoprojetos-theme";
+const DARK_THEME_QUERY = "(prefers-color-scheme: dark)";
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
-function getInitialTheme(): ThemeMode {
+function readStoredTheme(): ThemeMode | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return storedTheme === "light" || storedTheme === "dark" ? storedTheme : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveSystemTheme(): ThemeMode {
   if (typeof window === "undefined") return "light";
+  return window.matchMedia?.(DARK_THEME_QUERY).matches ? "dark" : "light";
+}
 
-  const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
-  if (storedTheme === "light" || storedTheme === "dark") return storedTheme;
+function readDocumentTheme(): ThemeMode | null {
+  if (typeof document === "undefined") return null;
 
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  const root = document.documentElement;
+  const currentTheme = root.dataset.theme;
+
+  if (currentTheme === "light" || currentTheme === "dark") return currentTheme;
+  if (root.classList.contains("theme-dark")) return "dark";
+  if (root.classList.contains("theme-light")) return "light";
+
+  return null;
+}
+
+function applyThemeToDocument(theme: ThemeMode) {
+  if (typeof document === "undefined") return;
+
+  const root = document.documentElement;
+  root.classList.remove("theme-light", "theme-dark");
+  root.classList.add(theme === "dark" ? "theme-dark" : "theme-light");
+  root.dataset.theme = theme;
+  root.style.colorScheme = theme;
+}
+
+function getInitialTheme(): ThemeMode {
+  return readDocumentTheme() ?? readStoredTheme() ?? resolveSystemTheme();
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
 
-  useEffect(() => {
-    const root = document.documentElement;
+  useLayoutEffect(() => {
+    applyThemeToDocument(theme);
 
-    root.classList.remove("theme-light", "theme-dark");
-    root.classList.add(theme === "dark" ? "theme-dark" : "theme-light");
-    root.dataset.theme = theme;
-    root.style.colorScheme = theme;
-
-    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    try {
+      window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+    } catch {
+      return;
+    }
   }, [theme]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia?.(DARK_THEME_QUERY);
+    if (!mediaQuery) return;
+
+    const handleSystemThemeChange = () => {
+      if (readStoredTheme()) return;
+      setTheme(mediaQuery.matches ? "dark" : "light");
+    };
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleSystemThemeChange);
+      return () => mediaQuery.removeEventListener("change", handleSystemThemeChange);
+    }
+
+    mediaQuery.addListener(handleSystemThemeChange);
+    return () => mediaQuery.removeListener(handleSystemThemeChange);
+  }, []);
+
+  useEffect(() => {
+    const handleStorage = (event: StorageEvent) => {
+      if (event.key !== THEME_STORAGE_KEY) return;
+      setTheme(readStoredTheme() ?? resolveSystemTheme());
+    };
+
+    window.addEventListener("storage", handleStorage);
+    return () => window.removeEventListener("storage", handleStorage);
+  }, []);
 
   const value = useMemo<ThemeContextValue>(
     () => ({

@@ -4,7 +4,31 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>Banco de Dados</title>
+    <title>Geoprojetos | Painel interno</title>
+    <script>
+      (() => {
+        const root = document.documentElement;
+        const storageKey = "geoprojetos-theme";
+
+        try {
+          const storedTheme = window.localStorage.getItem(storageKey);
+          const theme =
+            storedTheme === "light" || storedTheme === "dark"
+              ? storedTheme
+              : window.matchMedia?.("(prefers-color-scheme: dark)").matches
+                ? "dark"
+                : "light";
+
+          root.classList.add(theme === "dark" ? "theme-dark" : "theme-light");
+          root.dataset.theme = theme;
+          root.style.colorScheme = theme;
+        } catch {
+          root.classList.add("theme-light");
+          root.dataset.theme = "light";
+          root.style.colorScheme = "light";
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

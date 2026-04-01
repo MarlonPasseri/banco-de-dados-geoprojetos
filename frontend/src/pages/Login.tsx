@@ -19,24 +19,25 @@ import {
 import { useNavigate } from "react-router-dom";
 import { safeUUID } from "../utils/uuid";
 import { useTheme } from "../components/ThemeProvider";
+import { GeoProjetosMark, GeoProjetosSignature } from "../components/BrandLogo";
 
 type AuthMode = "login" | "register";
 
 const highlights = [
   {
     icon: Database,
-    title: "Dados centralizados",
-    text: "Importacao, consulta e follow up em um unico fluxo.",
+    title: "Base tecnica unificada",
+    text: "Contratos, clientes, follow-up e importacao reunidos em uma unica operacao.",
   },
   {
     icon: ShieldCheck,
-    title: "Acesso simples",
-    text: "Cadastro direto com nome, e-mail e senha, sem depender de provedor externo.",
+    title: "Uso interno protegido",
+    text: "Acesso controlado para o time da Geoprojetos sem tirar velocidade do dia a dia.",
   },
   {
     icon: Sparkles,
-    title: "Operacao rapida",
-    text: "Criou a conta, entrou. Menos etapas para o time interno.",
+    title: "Leitura clara da carteira",
+    text: "Interface pensada para localizar status, datas e pendencias sem friccao.",
   },
 ];
 
@@ -178,7 +179,7 @@ export default function Login() {
 
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-[-180px] top-[-140px] h-[520px] w-[520px] rounded-full bg-[rgba(0,51,102,0.2)] blur-3xl" />
-        <div className="absolute right-[-160px] bottom-[-160px] h-[520px] w-[520px] rounded-full bg-[rgba(249,115,22,0.18)] blur-3xl" />
+        <div className="absolute right-[-160px] bottom-[-160px] h-[520px] w-[520px] rounded-full bg-[rgba(15,148,199,0.18)] blur-3xl" />
         <div
           className="absolute inset-0 opacity-40"
           style={{
@@ -217,25 +218,21 @@ export default function Login() {
           >
             <header className="login-blueprint-header">
               <div className="login-blueprint-brand">
-                <div className="login-mark">GP</div>
-                <div className="login-blueprint-brand-copy">
-                  <div className="login-blueprint-brand-name">Banco de Dados</div>
-                  <div className="login-blueprint-brand-sub">GeoProjetos Internal DB</div>
-                </div>
+                <GeoProjetosSignature compact className="login-brand-lockup" />
               </div>
 
-              <div className="login-blueprint-eyebrow">Acesso autenticado</div>
-              <h1 className="login-blueprint-title">{mode === "login" ? "Acesso ao projeto" : "Criar novo acesso"}</h1>
+              <div className="login-blueprint-eyebrow">Uso interno Geoprojetos</div>
+              <h1 className="login-blueprint-title">{mode === "login" ? "Painel interno da operacao" : "Criar novo acesso interno"}</h1>
               <p className="login-blueprint-desc">
                 {mode === "login"
-                  ? "Entre com suas credenciais internas para acessar consultas, edicao e follow-up."
-                  : "Cadastre um novo usuario interno sem perder o fluxo atual de login do sistema."}
+                  ? "Entre para acompanhar consultas, contratos, edicao e follow-up com a identidade operacional da Geoprojetos."
+                  : "Cadastre um novo usuario interno mantendo o mesmo fluxo rapido de entrada para o time."}
               </p>
             </header>
 
             <div className="mb-6 flex items-start justify-between gap-3">
               <div className="auth-env hidden sm:block">
-                Ambiente local
+                Uso interno Geoprojetos
               </div>
             </div>
 
@@ -509,8 +506,8 @@ export default function Login() {
                 </div>
               </div>
               <div className="login-blueprint-footer-block">
-                <span className="login-blueprint-footer-label">Regiao</span>
-                <div className="login-blueprint-footer-value">BR-SP-01</div>
+                <span className="login-blueprint-footer-label">Assinatura da marca</span>
+                <div className="login-blueprint-footer-value">Desde 1985</div>
               </div>
             </footer>
           </motion.section>
@@ -521,12 +518,16 @@ export default function Login() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.28, delay: 0.09 }}
           >
+            <div className="login-brand-watermark" aria-hidden="true">
+              <GeoProjetosMark className="login-brand-watermark-mark" />
+            </div>
+
             <div className="login-blueprint-visual-inner">
               <div className="flex items-start justify-between gap-4">
                 <div className="login-blueprint-chip-row">
-                  <span className="login-blueprint-chip">Consultas</span>
-                  <span className="login-blueprint-chip">Edicao</span>
-                  <span className="login-blueprint-chip">Follow-up</span>
+                  <span className="login-blueprint-chip">Geoprojetos</span>
+                  <span className="login-blueprint-chip">Engenharia</span>
+                  <span className="login-blueprint-chip">40 anos</span>
                 </div>
 
                 <div className="login-blueprint-stat">
@@ -535,22 +536,24 @@ export default function Login() {
                       <Sparkles size={18} />
                     </div>
                     <div>
-                      <div className="login-blueprint-stat-label">Fluxos ativos</div>
-                      <div className="login-blueprint-stat-value">{highlights.length} modulos</div>
+                      <div className="login-blueprint-stat-label">Assinatura institucional</div>
+                      <div className="login-blueprint-stat-value">Painel interno</div>
                     </div>
                   </div>
-                  <div className="login-blueprint-stat-text">Consulta, edicao e acompanhamento centralizados.</div>
+                  <div className="login-blueprint-stat-text">Consulta, edicao e acompanhamento com a cara da Geoprojetos.</div>
                 </div>
               </div>
 
               <div className="login-blueprint-quote-wrap">
                 <div className="login-blueprint-accent-bar" />
+                <div className="login-blueprint-hero-kicker">Assinatura visual da empresa</div>
+                <GeoProjetosSignature className="login-hero-brand" inverse showBadge />
                 <blockquote className="login-blueprint-quote">
-                  "A integridade do projeto nao depende so do contrato, mas da <span>precisao</span> dos dados."
+                  Excelencia e qualidade desde <span>1985</span>
                 </blockquote>
                 <div className="login-blueprint-caption">
                   <div className="login-blueprint-caption-line" />
-                  Painel interno GeoProjetos
+                  Painel interno para contratos, clientes e follow-up
                 </div>
 
                 <div className="login-blueprint-metrics">

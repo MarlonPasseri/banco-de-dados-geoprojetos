@@ -18,6 +18,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { clearToken, fetchCurrentUser, getStoredUser, getToken, listFollowUps, subscribeAuthUserChange, type AuthUser } from "../api";
+import { GeoProjetosMark, GeoProjetosSignature } from "./BrandLogo";
 import { useTheme } from "./ThemeProvider";
 
 const ACTIVITY_REMINDER_ACK_KEY = "activities_reminder_ack_date";
@@ -37,6 +38,14 @@ function formatReminderDate(date: string) {
   const [year, month, day] = date.split("-").map(Number);
   if (!year || !month || !day) return date;
   return new Date(Date.UTC(year, month - 1, day)).toLocaleDateString("pt-BR", { timeZone: "UTC" });
+}
+
+function formatTodayLabel() {
+  return new Intl.DateTimeFormat("pt-BR", {
+    weekday: "short",
+    day: "2-digit",
+    month: "2-digit",
+  }).format(new Date());
 }
 
 function getStoredReminderAckDate() {
@@ -86,26 +95,48 @@ function isNavTargetActive(to: string, pathname: string, search: string) {
   return targetTab ? pathname === targetPathname && currentTab === targetTab : pathname === targetPathname;
 }
 
-function NavItem({ to, label, Icon }: { to: string; label: string; Icon: any }) {
+function NavItem({
+  to,
+  label,
+  Icon,
+  badgeCount = 0,
+}: {
+  to: string;
+  label: string;
+  Icon: LucideIcon;
+  badgeCount?: number;
+}) {
   const { pathname, search } = useLocation();
   const active = isNavTargetActive(to, pathname, search);
 
   return (
-    <Link to={to} className={`nav-link ${active ? "nav-link-active" : ""}`}>
+    <Link to={to} className={`nav-link ${active ? "nav-link-active" : ""}`} aria-current={active ? "page" : undefined} title={label}>
       <Icon size={16} />
-      <span className="whitespace-nowrap">{label}</span>
+      <span className="nav-link-label whitespace-nowrap">{label}</span>
+      {badgeCount > 0 ? <span className="nav-link-badge">{badgeCount > 99 ? "99+" : badgeCount}</span> : null}
     </Link>
   );
 }
 
-function MobileDockItem({ to, label, Icon }: { to: string; label: string; Icon: LucideIcon }) {
+function MobileDockItem({
+  to,
+  label,
+  Icon,
+  badgeCount = 0,
+}: {
+  to: string;
+  label: string;
+  Icon: LucideIcon;
+  badgeCount?: number;
+}) {
   const { pathname, search } = useLocation();
   const active = isNavTargetActive(to, pathname, search);
 
   return (
-    <Link to={to} className={`mobile-dock-item ${active ? "mobile-dock-item-active" : ""}`}>
+    <Link to={to} className={`mobile-dock-item ${active ? "mobile-dock-item-active" : ""}`} aria-current={active ? "page" : undefined}>
       <Icon size={18} />
       <span>{label}</span>
+      {badgeCount > 0 ? <span className="mobile-dock-badge">{badgeCount > 99 ? "99+" : badgeCount}</span> : null}
     </Link>
   );
 }
@@ -237,32 +268,38 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       NAV_ITEMS.find((item) => item.to === pathname) || {
         to: pathname,
         label: "Painel",
-        subtitle: "Banco de Dados GeoProjetos",
+        subtitle: "Painel operacional Geoprojetos",
         Icon: LayoutGrid,
       },
     [pathname],
   );
+  const todayLabel = useMemo(() => formatTodayLabel(), []);
+  const reminderCount = pathname === "/atividades" ? 0 : activityReminder?.count || 0;
+  const userLabel = currentUser?.name || currentUser?.username || currentUser?.email || "Usuario autenticado";
 
   return (
     <div className="app-shell app-blueprint-shell relative min-h-screen overflow-hidden">
+      <a className="skip-link" href="#main-content">
+        Ir para o conteudo principal
+      </a>
+
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-[-140px] top-[-120px] h-[500px] w-[500px] rounded-full bg-[rgba(0,51,102,0.18)] blur-3xl" />
-        <div className="absolute bottom-[-180px] right-[-140px] h-[520px] w-[520px] rounded-full bg-[rgba(249,115,22,0.16)] blur-3xl" />
+        <div className="absolute bottom-[-180px] right-[-140px] h-[520px] w-[520px] rounded-full bg-[rgba(29,125,242,0.14)] blur-3xl" />
+        <div className="app-shell-watermark">
+          <GeoProjetosMark className="app-shell-watermark-mark" />
+        </div>
       </div>
 
       <aside className="shell-sidebar hidden lg:flex">
         <div className="shell-sidebar-inner">
           <div className="shell-sidebar-brand">
-            <div className="brand-mark">GP</div>
-            <div className="shell-brand-copy">
-              <div className="shell-brand-title">Banco de Dados</div>
-              <div className="shell-brand-subtitle">GeoProjetos • Painel Interno</div>
-            </div>
+            <GeoProjetosSignature compact className="shell-brand-lockup" />
           </div>
 
-          <nav className="shell-nav">
+          <nav className="shell-nav" aria-label="Navegacao principal">
             {NAV_ITEMS.map((item) => (
-              <NavItem key={item.to} to={item.to} label={item.label} Icon={item.Icon} />
+              <NavItem key={item.to} to={item.to} label={item.label} Icon={item.Icon} badgeCount={item.to === "/atividades" ? reminderCount : 0} />
             ))}
           </nav>
 
@@ -278,7 +315,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <span className="shell-status-dot" />
                 Sessao ativa
               </div>
-              <div className="shell-status-copy">{currentUser?.name || currentUser?.username || currentUser?.email || "Usuario autenticado"}</div>
+              <div className="shell-status-copy">{userLabel}</div>
             </div>
           </div>
         </div>
@@ -288,11 +325,15 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <header className="shell-topbar">
           <div className="mx-auto max-w-[1480px] px-4 pt-4 sm:px-6">
             <div className="shell-topbar-inner">
-              <div className="shell-topbar-copy">
-                <div className="shell-topbar-eyebrow">Banco de Dados GeoProjetos</div>
-                <div className="shell-topbar-meta">
-                  <span className="shell-topbar-section">{currentSection.label}</span>
-                  <span className="shell-topbar-subtitle">{currentSection.subtitle}</span>
+              <div className="shell-topbar-brandline">
+                <GeoProjetosMark className="shell-topbar-mark" />
+
+                <div className="shell-topbar-copy">
+                  <div className="shell-topbar-eyebrow">Geoprojetos engenharia ltda.</div>
+                  <div className="shell-topbar-meta">
+                    <span className="shell-topbar-section">{currentSection.label}</span>
+                    <span className="shell-topbar-subtitle">{currentSection.subtitle}</span>
+                  </div>
                 </div>
               </div>
 
@@ -300,11 +341,12 @@ export default function AppLayout({ children }: { children: ReactNode }) {
                 <Link to="/consultas" className="shell-search-link" title="Abrir consultas">
                   <Search size={15} />
                   <span className="sm:hidden">Buscar</span>
-                  <span className="hidden sm:inline">Buscar GP, cliente ou follow-up</span>
+                  <span className="hidden sm:inline">Buscar contrato, cliente ou follow-up</span>
                 </Link>
 
-                <Link to="/atividades" className="shell-icon-btn" title="Abrir atividades">
+                <Link to="/atividades" className="shell-icon-btn" title="Abrir atividades" aria-label="Abrir atividades">
                   <BellRing size={16} />
+                  {reminderCount > 0 ? <span className="shell-action-badge">{reminderCount > 99 ? "99+" : reminderCount}</span> : null}
                 </Link>
 
                 <button
@@ -343,13 +385,42 @@ export default function AppLayout({ children }: { children: ReactNode }) {
 
             <nav className="nav-strip shell-mobile-nav mt-3 hidden items-center gap-1 overflow-x-auto pb-1 md:flex lg:hidden">
               {NAV_ITEMS.map((item) => (
-                <NavItem key={item.to} to={item.to} label={item.label} Icon={item.Icon} />
+                <NavItem key={item.to} to={item.to} label={item.label} Icon={item.Icon} badgeCount={item.to === "/atividades" ? reminderCount : 0} />
               ))}
             </nav>
+
+            <div className="shell-context-strip">
+              <div className="shell-context-card">
+                <span className="shell-context-icon">
+                  <currentSection.Icon size={16} />
+                </span>
+                <div className="shell-context-copy">
+                  <div className="shell-context-title">{currentSection.label}</div>
+                  <div className="shell-context-text">{currentSection.subtitle}</div>
+                </div>
+              </div>
+
+              <div className="shell-context-pills" aria-label="Resumo de contexto">
+                <span className="shell-context-pill">{todayLabel}</span>
+                <span className="shell-context-pill shell-context-pill-brand">40 anos de excelencia</span>
+                {pathname === "/atividades" ? (
+                  <span className="shell-context-pill shell-context-pill-accent">Agenda do dia aberta</span>
+                ) : reminderCount > 0 ? (
+                  <Link to="/atividades" className="shell-context-pill shell-context-pill-accent">
+                    {reminderCount} atividade(s) aguardando
+                  </Link>
+                ) : (
+                  <span className="shell-context-pill">Agenda acompanhada</span>
+                )}
+                <span className="shell-context-pill">{userLabel}</span>
+              </div>
+            </div>
           </div>
         </header>
 
         <motion.main
+          id="main-content"
+          tabIndex={-1}
           className="shell-content relative mx-auto max-w-[1480px] p-4 sm:p-6"
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
@@ -363,7 +434,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <nav className="mobile-dock md:hidden" aria-label="Navegacao principal">
         <div className="mobile-dock-inner">
           {MOBILE_DOCK_ITEMS.map((item) => (
-            <MobileDockItem key={item.to} to={item.to} label={item.label} Icon={item.Icon} />
+            <MobileDockItem key={item.to} to={item.to} label={item.label} Icon={item.Icon} badgeCount={item.to === "/atividades" ? reminderCount : 0} />
           ))}
         </div>
       </nav>
